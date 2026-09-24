@@ -217,6 +217,7 @@ export default function App() {
               analysis={geminiAnalysis}
               isAnalyzing={isAnalyzing}
               onAskGeminiAI={handleCreateLightingGuide}
+              coloringMedium={settings.coloringMedium}
             />
         </>
       </main>
