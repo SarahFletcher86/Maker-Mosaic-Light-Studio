@@ -41,6 +41,21 @@ export interface ColorPalette {
   rimLight: string;
 }
 
+export type LightingRegionKind = 'highlight' | 'form-shadow' | 'cast-shadow' | 'deep-shadow';
+
+export interface GuidePoint {
+  x: number; // 0..100 normalized image/canvas coordinate
+  y: number; // 0..100 normalized image/canvas coordinate
+}
+
+export interface LightingGuideRegion {
+  kind: LightingRegionKind;
+  label: string;
+  explanation: string;
+  strength: number; // 0..1 suggested intensity
+  points: GuidePoint[];
+}
+
 export interface GeminiLightingAnalysis {
   title: string;
   summary: string;
@@ -49,6 +64,7 @@ export interface GeminiLightingAnalysis {
   colorTheoryTip: string;
   stepByStepGuide: string[];
   palette: ColorPalette;
+  regions: LightingGuideRegion[];
 }
 
 export interface SampleDrawing {
