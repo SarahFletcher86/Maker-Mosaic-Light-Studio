@@ -1,17 +1,12 @@
 import React from 'react';
-import { LightSource, ShadingSettings, ActiveTool, ColoringMedium, AnalysisProvider } from '../types';
-import { Sun, Palette, PaintBucket, Move, Moon, Zap, Flame, Sparkles, Layers, Compass, HelpCircle, Eye } from 'lucide-react';
+import { LightSource, ShadingSettings, ColoringMedium, AnalysisProvider } from '../types';
+import { Sparkles, ChevronDown } from 'lucide-react';
 
 interface ControlsPanelProps {
   light: LightSource;
   setLight: React.Dispatch<React.SetStateAction<LightSource>>;
   settings: ShadingSettings;
   setSettings: React.Dispatch<React.SetStateAction<ShadingSettings>>;
-  activeTool: ActiveTool;
-  setActiveTool: (tool: ActiveTool) => void;
-  paintColor: string;
-  setPaintColor: (color: string) => void;
-  onClearPaint: () => void;
   onCreateLightingGuide: () => void;
   analysisProvider: AnalysisProvider;
   setAnalysisProvider: (provider: AnalysisProvider) => void;
@@ -23,372 +18,182 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
   setLight,
   settings,
   setSettings,
-  activeTool,
-  setActiveTool,
-  paintColor,
-  setPaintColor,
-  onClearPaint,
   onCreateLightingGuide,
   analysisProvider,
   setAnalysisProvider,
-  isAnalyzing
+  isAnalyzing,
 }) => {
-  // Quick Light Direction Angles for Coloring Pages
-  const lightDirectionPresets = [
-    { name: 'Top-Left Sun (45°)', x: 25, y: 20, z: 65, color: '#FFF2C6', shadow: '#1F1738' },
-    { name: 'Top-Right Sun', x: 75, y: 20, z: 65, color: '#FFF0C2', shadow: '#1E1233' },
-    { name: 'Direct Overhead', x: 50, y: 10, z: 80, color: '#FFFFFF', shadow: '#111827' },
-    { name: 'Front Desk Lamp', x: 50, y: 50, z: 90, color: '#FFF8E7', shadow: '#221835' },
-    { name: 'Sunset Warmth', x: 85, y: 35, z: 45, color: '#FF7A45', shadow: '#2D0E32' },
-    { name: 'Night Moonlight', x: 20, y: 25, z: 70, color: '#90E0EF', shadow: '#03045E' }
-  ];
-
-  // Medium presets
   const mediums: { id: ColoringMedium; label: string; icon: string }[] = [
-    { id: 'colored-pencils', label: 'Colored Pencils', icon: '✏️' },
-    { id: 'markers', label: 'Alcohol Markers', icon: '🖍️' },
-    { id: 'watercolors', label: 'Watercolors', icon: '🎨' },
-    { id: 'digital', label: 'Digital Layers', icon: '💻' }
+    { id: 'colored-pencils', label: 'Pencils', icon: '✏️' },
+    { id: 'markers', label: 'Markers', icon: '🖍️' },
+    { id: 'watercolors', label: 'Watercolor', icon: '🎨' },
+    { id: 'digital', label: 'Digital', icon: '💻' },
   ];
 
-  // Quick paint swatches
-  const paintSwatches = [
-    '#E06D53', '#F2A65A', '#E2D870', '#83C5BE', '#006D77',
-    '#9B5DE5', '#F15BB5', '#00BBF9', '#38B000', '#F3C68F',
-    '#5C3D2E', '#2B2D42', '#8D99AE', '#FFFFFF', '#111827'
+  const directions = [
+    { label: 'Upper left', icon: '↖', x: 25, y: 20 },
+    { label: 'Above', icon: '↑', x: 50, y: 12 },
+    { label: 'Upper right', icon: '↗', x: 75, y: 20 },
+    { label: 'Below', icon: '↑', x: 50, y: 85 },
   ];
+
+  const lightTypes = [
+    { label: 'Daylight', icon: '☀️', color: '#FFF4D6', type: 'directional' as const, z: 70, shadow: '#26334D' },
+    { label: 'Warm lamp', icon: '💡', color: '#FFE0A3', type: 'point' as const, z: 60, shadow: '#35213F' },
+    { label: 'Candle', icon: '🕯️', color: '#FFAD5A', type: 'point' as const, z: 35, shadow: '#3C1839' },
+    { label: 'Moonlight', icon: '🌙', color: '#9ED8FF', type: 'directional' as const, z: 70, shadow: '#17285A' },
+  ];
+
+  const currentLightType =
+    light.color.toUpperCase() === '#FFAD5A' ? 'Candle' :
+    light.color.toUpperCase() === '#9ED8FF' ? 'Moonlight' :
+    light.type === 'point' ? 'Warm lamp' : 'Daylight';
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl text-slate-200 space-y-5">
-      {/* Tool Selector (Light Puck vs Paint Bucket) */}
-      <div className="bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex items-center justify-between gap-2">
-        <button
-          onClick={() => setActiveTool('light-drag')}
-          className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-            activeTool === 'light-drag'
-              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <Move className="w-4 h-4" />
-          <span>Move Light Source</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTool('bucket-fill')}
-          className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-            activeTool === 'bucket-fill'
-              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <PaintBucket className="w-4 h-4" />
-          <span>Fill Base Color</span>
-        </button>
-      </div>
-
-      {/* AI Master Assistant Button */}
-      <button
-        onClick={onCreateLightingGuide}
-        disabled={isAnalyzing}
-        className="w-full relative overflow-hidden group bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 text-slate-950 font-extrabold text-xs py-3 px-4 rounded-xl shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 transition-all flex items-center justify-center space-x-2 active:scale-[0.98] disabled:opacity-70"
-      >
-        <Sparkles className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : 'animate-bounce'}`} />
-        <span>{isAnalyzing ? 'Mapping Light & Shadows...' : 'Create My Lighting Guide'}</span>
-      </button>
-
-      {/* Development A/B provider switch. Remove or hide before public launch. */}
-      <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-            Test analysis model
-          </span>
-          <span className="text-[10px] text-slate-500">A/B only</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setAnalysisProvider('openai')}
-            disabled={isAnalyzing}
-            className={`px-2.5 py-2 rounded-lg border text-[11px] font-bold transition-all disabled:opacity-50 ${
-              analysisProvider === 'openai'
-                ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            OpenAI · GPT-6 Luna
-          </button>
-          <button
-            type="button"
-            onClick={() => setAnalysisProvider('gemini')}
-            disabled={isAnalyzing}
-            className={`px-2.5 py-2 rounded-lg border text-[11px] font-bold transition-all disabled:opacity-50 ${
-              analysisProvider === 'gemini'
-                ? 'bg-blue-500/15 border-blue-500/50 text-blue-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            Gemini · 3.1 Flash-Lite
-          </button>
+      <div>
+        <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-amber-400">Step 2</span>
+        <h2 className="text-lg font-bold text-white mt-1">Choose your medium</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 mt-3">
+          {mediums.map((medium) => (
+            <button
+              key={medium.id}
+              type="button"
+              onClick={() => setSettings(prev => ({ ...prev, coloringMedium: medium.id }))}
+              className={`px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                settings.coloringMedium === medium.id
+                  ? 'bg-amber-500/15 border-amber-500 text-amber-300'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <span className="mr-1.5">{medium.icon}</span>{medium.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* LIGHT DIRECTION ANGLE PRESETS */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
-            <Compass className="w-3.5 h-3.5 text-amber-400" />
-            <span>Light Source Angle</span>
-          </label>
-          <span className="text-[10px] text-amber-400 font-mono">X:{Math.round(light.x)}% Y:{Math.round(light.y)}%</span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          {lightDirectionPresets.map((p) => {
-            const isSelected = Math.abs(light.x - p.x) < 0.5 && Math.abs(light.y - p.y) < 0.5;
+      <div className="border-t border-slate-800 pt-5">
+        <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-amber-400">Step 3</span>
+        <h2 className="text-lg font-bold text-white mt-1">Where is the light?</h2>
+        <p className="text-xs text-slate-400 mt-1">Pick the direction it is coming from.</p>
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          {directions.map((direction) => {
+            const selected =
+              Math.abs(light.x - direction.x) < 1 &&
+              Math.abs(light.y - direction.y) < 1;
             return (
               <button
-                key={p.name}
-                onClick={() => {
-                  setLight(prev => ({ ...prev, x: p.x, y: p.y, z: p.z, color: p.color }));
-                  setSettings(prev => ({ ...prev, shadowColor: p.shadow }));
-                }}
-                className={`flex items-center space-x-2 p-2 rounded-xl text-xs font-semibold border transition-all text-left ${
-                  isSelected
-                    ? 'bg-amber-500/15 border-amber-500 text-amber-300 font-bold'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800/60'
+                key={direction.label}
+                type="button"
+                onClick={() => setLight(prev => ({ ...prev, x: direction.x, y: direction.y }))}
+                className={`px-3 py-3 rounded-xl border text-sm font-semibold transition-all ${
+                  selected
+                    ? 'bg-amber-500/15 border-amber-500 text-amber-300'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
-                <div
-                  className="w-3.5 h-3.5 rounded-full border border-white/40 shadow-sm shrink-0"
-                  style={{ backgroundColor: p.color }}
-                />
-                <span className="truncate">{p.name}</span>
+                <span className="text-lg mr-2">{direction.icon}</span>{direction.label}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* LIGHT DISTANCE & SPREAD MODE */}
-      <div className="space-y-3 bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="font-semibold text-slate-300">Light Spread Type</span>
-          <div className="flex gap-1">
+      <div className="border-t border-slate-800 pt-5">
+        <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-amber-400">Step 4</span>
+        <h2 className="text-lg font-bold text-white mt-1">What kind of light?</h2>
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          {lightTypes.map((source) => (
             <button
-              onClick={() => setLight(prev => ({ ...prev, type: 'directional' }))}
-              className={`px-2.5 py-1 rounded-lg border font-semibold transition-all ${
-                light.type !== 'point'
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              ☀️ Distant Key Light
-            </button>
-            <button
-              onClick={() => setLight(prev => ({ ...prev, type: 'point' }))}
-              className={`px-2.5 py-1 rounded-lg border font-semibold transition-all ${
-                light.type === 'point'
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              💡 Local Lamp
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-1 pt-1 border-t border-slate-800/80">
-          <div className="flex items-center justify-between text-slate-300 font-semibold">
-            <span>Distance / Elevation to Subject</span>
-            <span className="text-amber-400 font-mono">{Math.round(light.z)}%</span>
-          </div>
-          <input
-            type="range"
-            min="10"
-            max="100"
-            value={light.z}
-            onChange={(e) => setLight(prev => ({ ...prev, z: Number(e.target.value) }))}
-            className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-          />
-        </div>
-      </div>
-
-      {/* COLORING GUIDE DISPLAY STYLES */}
-      <div className="space-y-2">
-        <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
-          <Layers className="w-3.5 h-3.5 text-amber-400" />
-          <span>Coloring Overlay Style</span>
-        </label>
-
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => setSettings(prev => ({ ...prev, style: 'guide-map' }))}
-            className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center space-x-2 ${
-              settings.style === 'guide-map'
-                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>🎯 Highlight & Shadow Map</span>
-          </button>
-
-          <button
-            onClick={() => setSettings(prev => ({ ...prev, style: 'soft-render' }))}
-            className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center space-x-2 ${
-              settings.style === 'soft-render'
-                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>✏️ Soft Blend Preview</span>
-          </button>
-
-          <button
-            onClick={() => setSettings(prev => ({ ...prev, style: 'cel-shading' }))}
-            className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center space-x-2 ${
-              settings.style === 'cel-shading'
-                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>🖍️ Marker Cel Blocks</span>
-          </button>
-
-          <button
-            onClick={() => setSettings(prev => ({ ...prev, style: 'heat-map' }))}
-            className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center space-x-2 ${
-              settings.style === 'heat-map'
-                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>🔥 Light Heatmap Zone</span>
-          </button>
-        </div>
-      </div>
-
-      {/* COLORING MEDIUM & GUIDE TOGGLES */}
-      <div className="space-y-3 bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="font-semibold text-slate-300">Coloring Medium</span>
-          <div className="flex gap-1">
-            {mediums.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setSettings(prev => ({ ...prev, coloringMedium: m.id }))}
-                className={`px-2 py-1 rounded-lg border font-medium text-[11px] transition-all ${
-                  settings.coloringMedium === m.id
-                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-                title={m.label}
-              >
-                <span>{m.icon}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Toggle Light Rays */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-          <span className="text-slate-300 font-semibold">Draw Light Ray Beams</span>
-          <input
-            type="checkbox"
-            checked={settings.showLightRays}
-            onChange={(e) => setSettings(prev => ({ ...prev, showLightRays: e.target.checked }))}
-            className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-          />
-        </div>
-
-        {/* Toggle Guide Badges */}
-        <div className="flex items-center justify-between">
-          <span className="text-slate-300 font-semibold">Highlight & Shadow Badges</span>
-          <input
-            type="checkbox"
-            checked={settings.showGuideMarkers}
-            onChange={(e) => setSettings(prev => ({ ...prev, showGuideMarkers: e.target.checked }))}
-            className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-          />
-        </div>
-      </div>
-
-      {/* SHADOW TINT & OPACITY */}
-      <div className="space-y-3 bg-slate-950/80 border border-slate-800/80 rounded-xl p-3">
-        <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-          <span>Shadow Pencil Tint</span>
-          <div className="flex items-center space-x-2">
-            <span className="font-mono text-[10px] text-slate-400">{settings.shadowColor}</span>
-            <input
-              type="color"
-              value={settings.shadowColor}
-              onChange={(e) => setSettings(prev => ({ ...prev, shadowColor: e.target.value }))}
-              className="w-5 h-5 rounded border-0 bg-transparent cursor-pointer"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-          <span>Shadow Depth / Pressure</span>
-          <span className="text-amber-400 font-mono">{Math.round(settings.shadowOpacity * 100)}%</span>
-        </div>
-        <input
-          type="range"
-          min="0.1"
-          max="1.0"
-          step="0.05"
-          value={settings.shadowOpacity}
-          onChange={(e) => setSettings(prev => ({ ...prev, shadowOpacity: Number(e.target.value) }))}
-          className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-        />
-      </div>
-
-      {/* BASE COLOR FILL PALETTE */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
-            <PaintBucket className="w-3.5 h-3.5 text-amber-400" />
-            <span>Bucket Paint Color</span>
-          </label>
-          <button
-            onClick={onClearPaint}
-            className="text-[10px] text-red-400 hover:text-red-300 font-semibold underline"
-          >
-            Clear Base Paints
-          </button>
-        </div>
-
-        {/* Color Swatches Grid */}
-        <div className="flex flex-wrap gap-1.5">
-          {paintSwatches.map((color) => (
-            <button
-              key={color}
+              key={source.label}
+              type="button"
               onClick={() => {
-                setPaintColor(color);
-                setActiveTool('bucket-fill');
+                setLight(prev => ({
+                  ...prev,
+                  color: source.color,
+                  type: source.type,
+                  z: source.z,
+                }));
+                setSettings(prev => ({ ...prev, shadowColor: source.shadow }));
               }}
-              className={`w-6 h-6 rounded-lg border transition-transform ${
-                paintColor.toUpperCase() === color.toUpperCase() && activeTool === 'bucket-fill'
-                  ? 'scale-125 border-amber-400 ring-2 ring-amber-400/50 z-10'
-                  : 'border-slate-700 hover:scale-110'
+              className={`px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                currentLightType === source.label
+                  ? 'bg-amber-500/15 border-amber-500 text-amber-300'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
               }`}
-              style={{ backgroundColor: color }}
-              title={`Select ${color}`}
-            />
+            >
+              <span className="mr-1.5">{source.icon}</span>{source.label}
+            </button>
           ))}
-          <input
-            type="color"
-            value={paintColor}
-            onChange={(e) => {
-              setPaintColor(e.target.value);
-              setActiveTool('bucket-fill');
-            }}
-            className="w-6 h-6 rounded-lg border-0 bg-transparent cursor-pointer p-0"
-            title="Custom Paint Color"
-          />
         </div>
       </div>
+
+      <button
+        onClick={onCreateLightingGuide}
+        disabled={isAnalyzing}
+        className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 text-slate-950 font-extrabold text-sm py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-70"
+      >
+        <Sparkles className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
+        {isAnalyzing ? 'Creating your guide…' : 'Create my lighting guide'}
+      </button>
+
+      <details className="group border-t border-slate-800 pt-3">
+        <summary className="list-none cursor-pointer flex items-center justify-between text-[11px] font-semibold text-slate-500 hover:text-slate-300">
+          <span>Advanced / testing</span>
+          <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
+        </summary>
+
+        <div className="mt-3 space-y-3 bg-slate-950/70 border border-slate-800 rounded-xl p-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-2">Analysis model</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setAnalysisProvider('openai')}
+                disabled={isAnalyzing}
+                className={`px-2 py-2 rounded-lg border text-[10px] font-bold ${
+                  analysisProvider === 'openai'
+                    ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
+                    : 'border-slate-800 text-slate-500'
+                }`}
+              >
+                GPT-6 Luna
+              </button>
+              <button
+                type="button"
+                onClick={() => setAnalysisProvider('gemini')}
+                disabled={isAnalyzing}
+                className={`px-2 py-2 rounded-lg border text-[10px] font-bold ${
+                  analysisProvider === 'gemini'
+                    ? 'bg-blue-500/15 border-blue-500/50 text-blue-300'
+                    : 'border-slate-800 text-slate-500'
+                }`}
+              >
+                Gemini Flash-Lite
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+              <span>Light elevation</span>
+              <span>{Math.round(light.z)}%</span>
+            </div>
+            <input
+              type="range"
+              min="10"
+              max="100"
+              value={light.z}
+              onChange={(e) => setLight(prev => ({ ...prev, z: Number(e.target.value) }))}
+              className="w-full accent-amber-500"
+            />
+          </div>
+
+          <p className="text-[10px] text-slate-600">
+            Position: X {Math.round(light.x)} · Y {Math.round(light.y)}
+          </p>
+        </div>
+      </details>
     </div>
   );
 };
-
