@@ -83,7 +83,9 @@ For each region:
 - explanation: one concise sentence explaining why that area receives this light/shadow.
 - strength: 0.15..1.0.
 - Keep polygons local to the real object surface. Do NOT return giant generic page quadrants.
-- Do NOT shade blank page/background unless it is clearly part of the illustration.
+- For "highlight", "form-shadow", and "deep-shadow", every polygon should stay INSIDE the visible object/surface contour. Do not let those polygons float outside the subject or spill into blank paper.
+- Only "cast-shadow" regions may intentionally extend off the subject onto a floor, wall, table, ground plane, or other receiving surface.
+- Do NOT shade blank page/background unless it is the actual receiving surface for a cast shadow.
 - If geometry is ambiguous, use a smaller region rather than inventing a huge one.
 
 TEACHING RESPONSE
