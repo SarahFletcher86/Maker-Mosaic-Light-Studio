@@ -18,6 +18,7 @@ interface ControlsPanelProps {
   analysisProvider: AnalysisProvider;
   setAnalysisProvider: (provider: AnalysisProvider) => void;
   isAnalyzing: boolean;
+  guideNeedsUpdate: boolean;
 }
 
 export const ControlsPanel: React.FC<ControlsPanelProps> = ({
@@ -29,6 +30,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
   analysisProvider,
   setAnalysisProvider,
   isAnalyzing,
+  guideNeedsUpdate,
 }) => {
   const mediums: { id: ColoringMedium; label: string; note: string }[] = [
     { id: 'colored-pencils', label: 'Pencil', note: 'soft layered texture' },
@@ -287,7 +289,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
         className="primary-action"
       >
         <Sparkles size={17} className={isAnalyzing ? 'spin' : ''} />
-        {isAnalyzing ? 'Creating your guide…' : 'Create my lighting guide'}
+        {isAnalyzing ? 'Creating your guide…' : guideNeedsUpdate ? 'Update lighting guide' : 'Create my lighting guide'}
       </button>
 
       <details className="testing-details">
