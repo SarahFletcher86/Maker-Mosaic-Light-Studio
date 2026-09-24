@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { LightSource, ShadingSettings, ActiveTool } from '../types';
+import { LightSource, ShadingSettings, ActiveTool, LightingGuideRegion } from '../types';
 import { processLineArtSurface, renderLightingOverlay, floodFill, CanvasShadingContext } from '../utils/normalMap';
 import { Sun, Moon, Sliders, Move, Download, RefreshCw, ZoomIn, ZoomOut, Eye } from 'lucide-react';
 
@@ -12,6 +12,7 @@ interface LightingCanvasProps {
   activeTool: ActiveTool;
   paintColor: string;
   clearPaintTrigger: number;
+  guideRegions: LightingGuideRegion[];
 }
 
 export const LightingCanvas: React.FC<LightingCanvasProps> = ({
@@ -22,7 +23,8 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   settings,
   activeTool,
   paintColor,
-  clearPaintTrigger
+  clearPaintTrigger,
+  guideRegions
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const lineCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -247,6 +249,48 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
           />
         </div>
 
+        {/* AI semantic guide regions drawn over the ORIGINAL artwork.
+            These come from Gemini's understanding of object form/overlap rather than
+            the instant distance-transform preview used by the local renderer. */}
+        {guideRegions.length > 0 && (
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none z-[15]"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-label="AI highlight and shadow guide overlay"
+          >
+            {guideRegions.map((region, index) => {
+              const colors = {
+                highlight: { fill: '#FDE68A', stroke: '#F59E0B' },
+                'form-shadow': { fill: '#A78BFA', stroke: '#7C3AED' },
+                'cast-shadow': { fill: '#60A5FA', stroke: '#2563EB' },
+                'deep-shadow': { fill: '#4338CA', stroke: '#312E81' },
+              }[region.kind];
+
+              const points = region.points
+                .map((point) => `${Math.max(0, Math.min(100, point.x))},${Math.max(0, Math.min(100, point.y))}`)
+                .join(' ');
+
+              const fillOpacity = Math.max(0.12, Math.min(0.46, region.strength * 0.42));
+
+              return (
+                <polygon
+                  key={`${region.kind}-${index}`}
+                  points={points}
+                  fill={colors.fill}
+                  fillOpacity={fillOpacity}
+                  stroke={colors.stroke}
+                  strokeOpacity={0.9}
+                  strokeWidth={0.45}
+                  strokeLinejoin="round"
+                >
+                  <title>{`${region.label}: ${region.explanation}`}</title>
+                </polygon>
+              );
+            })}
+          </svg>
+        )}
+
         {/* SVG Connecting Ray Line between Light Source & Shadow Side */}
         {showLightPuck && (
           <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
@@ -363,6 +407,16 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
           </div>
         )}
       </div>
+
+      {guideRegions.length > 0 && (
+        <div className="w-full flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
+          <span className="font-bold text-amber-300">AI guide</span>
+          <span><span className="text-amber-300">●</span> Highlight</span>
+          <span><span className="text-violet-300">●</span> Form shadow</span>
+          <span><span className="text-blue-300">●</span> Cast shadow</span>
+          <span><span className="text-indigo-400">●</span> Deep shadow</span>
+        </div>
+      )}
 
       {/* Canvas Footer Controls (Split View Slider) */}
       <div className="w-full flex items-center space-x-3 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-xs">
