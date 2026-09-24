@@ -389,16 +389,16 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   const darkPreviewSurface = settings.previewSurface === 'dark';
   const outlineColors = darkPreviewSurface
     ? {
-        highlight: '#FFF0A8',
-        'form-shadow': '#E2CCE8',
-        'cast-shadow': '#C9E6F1',
-        'deep-shadow': '#ECECF4',
+        highlight: '#FFE8A3',
+        'form-shadow': '#D8CADC',
+        'cast-shadow': '#C7DCE6',
+        'deep-shadow': '#D9DCE7',
       }
     : {
-        highlight: '#8D5B20',
-        'form-shadow': '#5B4963',
-        'cast-shadow': '#47687B',
-        'deep-shadow': '#363C52',
+        highlight: '#A46A26',
+        'form-shadow': '#766679',
+        'cast-shadow': '#617987',
+        'deep-shadow': '#5C6172',
       };
 
   const polygonAppearance = (region: LightingGuideRegion) => {
@@ -425,15 +425,27 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         ? (isBlankLineArt ? 1.55 : 1.25)
         : 1;
 
+    const subtleOutline =
+      settings.showGuideOutlines &&
+      (
+        isHighlight ||
+        (region.kind === 'form-shadow' && settings.coloringMedium === 'colored-pencils')
+      );
+
+    const boostedMinimum =
+      settings.boostHighlightVisibility && isBlankLineArt
+        ? (isHighlight ? .18 : .14)
+        : .08;
+
     return {
       fill: isHighlight ? resolved.highlight : resolved.shadow,
-      stroke: settings.showGuideOutlines ? outlineColors[region.kind] : 'none',
+      stroke: subtleOutline ? outlineColors[region.kind] : 'none',
       opacity: clamp(
         baseOpacity *
           (.65 + region.strength * .65) *
           (isDeep ? 1.25 : isCast ? 1.1 : 1) *
           highlightBoost,
-        .08,
+        boostedMinimum,
         .62,
       ),
       filter: mediumConfig.filter,
@@ -442,9 +454,9 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         !isHighlight && settings.shadowPalette === 'same-color' ? 'multiply' as const :
         settings.coloringMedium === 'markers' ? 'multiply' as const :
         'normal' as const,
-      strokeWidth: settings.showGuideOutlines ? .42 : 0,
-      strokeDasharray: settings.showGuideOutlines ? '1.15 1.35' : undefined,
-      strokeOpacity: settings.showGuideOutlines ? .92 : 0,
+      strokeWidth: subtleOutline ? .20 : 0,
+      strokeDasharray: subtleOutline ? '.08 1.15' : undefined,
+      strokeOpacity: subtleOutline ? .68 : 0,
     };
   };
 
@@ -736,8 +748,8 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
                 }
               />
               <span>
-                <strong>Show dotted guide outlines</strong>
-                <small>Keeps subtle Auto highlights and shadows easy to find on any preview surface.</small>
+                <strong>Show subtle guide edges</strong>
+                <small>Adds a light dotted edge only where faint guide areas need extra definition.</small>
               </span>
             </label>
           </div>
