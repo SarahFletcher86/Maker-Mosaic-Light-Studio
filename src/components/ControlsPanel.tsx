@@ -145,7 +145,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
 
         <div className="grid grid-cols-2 gap-2">
           {lightDirectionPresets.map((p) => {
-            const isSelected = Math.abs(light.x - p.x) < 8 && Math.abs(light.y - p.y) < 8;
+            const isSelected = Math.abs(light.x - p.x) < 0.5 && Math.abs(light.y - p.y) < 0.5;
             return (
               <button
                 key={p.name}
