@@ -60,6 +60,7 @@ export interface ShadingSettings {
   showLearningMap: boolean;
   previewSurface: PreviewSurface;
   boostHighlightVisibility: boolean;
+  showGuideOutlines: boolean;
 }
 
 export interface ColorPalette {
