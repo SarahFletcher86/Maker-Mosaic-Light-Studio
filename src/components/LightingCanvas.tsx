@@ -130,13 +130,13 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   const mediumConfig = useMemo(() => {
     switch (settings.coloringMedium) {
       case 'markers':
-        return { label: 'Marker', shadowBase: 0.28, highlightBase: 0.22, filter: undefined, hatch: false };
+        return { label: 'Marker', shadowBase: 0.28, highlightBase: 0.27, filter: undefined, hatch: false };
       case 'watercolors':
-        return { label: 'Watercolour', shadowBase: 0.20, highlightBase: 0.16, filter: 'url(#watercolor)', hatch: false };
+        return { label: 'Watercolour', shadowBase: 0.20, highlightBase: 0.21, filter: 'url(#watercolor)', hatch: false };
       case 'digital':
-        return { label: 'Digital', shadowBase: 0.25, highlightBase: 0.20, filter: 'url(#digitalSoft)', hatch: false };
+        return { label: 'Digital', shadowBase: 0.25, highlightBase: 0.26, filter: 'url(#digitalSoft)', hatch: false };
       default:
-        return { label: 'Pencil', shadowBase: 0.17, highlightBase: 0.10, filter: 'url(#pencilGrain)', hatch: false };
+        return { label: 'Pencil', shadowBase: 0.17, highlightBase: 0.20, filter: 'url(#pencilGrain)', hatch: false };
     }
   }, [settings.coloringMedium]);
 
@@ -356,13 +356,27 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
               <filter id="digitalSoft" x="-4%" y="-4%" width="108%" height="108%">
                 <feGaussianBlur stdDeviation=".16" />
               </filter>
+              <filter id="highlightBloom" x="-15%" y="-15%" width="130%" height="130%">
+                <feGaussianBlur stdDeviation=".55" />
+              </filter>
             </defs>
 
             {guideRegions.map((region, index) => {
               const appearance = polygonAppearance(region);
               const path = smoothSvgPath(region);
+              const isHighlight = region.kind === 'highlight';
+
               return (
                 <g key={`${region.kind}-${index}`}>
+                  {!settings.showLearningMap && isHighlight && (
+                    <path
+                      d={path}
+                      fill={resolved.highlight}
+                      fillOpacity={clamp(appearance.opacity * .55, .09, .18)}
+                      filter="url(#highlightBloom)"
+                      style={{ mixBlendMode: 'normal' }}
+                    />
+                  )}
                   <path
                     d={path}
                     fill={appearance.fill}
