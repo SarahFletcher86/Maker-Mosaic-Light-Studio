@@ -1,18 +1,28 @@
 import React from 'react';
-import { GeminiLightingAnalysis } from '../types';
+import { ColoringMedium, GeminiLightingAnalysis } from '../types';
 import { Sparkles, Sun, Moon, Palette, ChevronDown } from 'lucide-react';
 
 interface GeminiLightGuideProps {
   analysis: GeminiLightingAnalysis | null;
   isAnalyzing: boolean;
   onAskGeminiAI: () => void;
+  coloringMedium: ColoringMedium;
 }
 
 export const GeminiLightGuide: React.FC<GeminiLightGuideProps> = ({
   analysis,
   isAnalyzing,
   onAskGeminiAI,
+  coloringMedium,
 }) => {
+  const mediumTip =
+    coloringMedium === 'markers'
+      ? 'Use translucent passes and let each layer dry before deepening the shadow. Same-colour layering, greys, violet, or a custom shadow colour all work.'
+      : coloringMedium === 'watercolors'
+        ? 'Build the shadow with transparent washes and let the edge soften as it turns across rounded forms. Keep highlights lighter by preserving paper or lifting colour.'
+        : coloringMedium === 'digital'
+          ? 'Use a soft clipped layer for form shadows and a firmer edge for cast shadows. Lower opacity first, then build contrast where forms overlap.'
+          : 'Build shadows gradually with light pressure and overlapping strokes. Feather the edge on rounded forms and reserve your brightest paper or pencil for highlights.';
   if (isAnalyzing) {
     return (
       <section className="studio-card result-card">
@@ -44,7 +54,7 @@ export const GeminiLightGuide: React.FC<GeminiLightGuideProps> = ({
         </article>
         <article className="result-tip">
           <h4><Palette size={15} color="var(--blue)" /> For your medium</h4>
-          <p>{analysis.colorTheoryTip}</p>
+          <p>{mediumTip}</p>
         </article>
       </div>
 
