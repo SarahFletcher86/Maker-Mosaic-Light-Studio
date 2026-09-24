@@ -90,7 +90,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
         className="w-full relative overflow-hidden group bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 text-slate-950 font-extrabold text-xs py-3 px-4 rounded-xl shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 transition-all flex items-center justify-center space-x-2 active:scale-[0.98] disabled:opacity-70"
       >
         <Sparkles className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : 'animate-bounce'}`} />
-        <span>{isAnalyzing ? 'Gemini AI Analyzing Page Lighting...' : 'Ask Gemini AI Coloring Coach'}</span>
+        <span>{isAnalyzing ? 'Mapping Light & Shadows...' : 'Create My Lighting Guide'}</span>
       </button>
 
       {/* LIGHT DIRECTION ANGLE PRESETS */}
