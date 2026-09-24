@@ -54,9 +54,118 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   const [guideReveal, setGuideReveal] = useState(0);
   const [showLightPuck, setShowLightPuck] = useState(false);
   const [isDraggingLight, setIsDraggingLight] = useState(false);
+  const [subjectMaskUrl, setSubjectMaskUrl] = useState<string | null>(null);
+  const [isBlankLineArt, setIsBlankLineArt] = useState(true);
 
   const lightX = clamp(light.x, 6, 94);
   const lightY = clamp(light.y, 6, 94);
+
+  const analyzeArtworkSurface = useCallback((ctx: CanvasRenderingContext2D) => {
+    const image = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    const pixels = image.data;
+    const total = CANVAS_SIZE * CANVAS_SIZE;
+    const barrier = new Uint8Array(total);
+
+    let chromaticPixels = 0;
+    let visiblePixels = 0;
+
+    for (let i = 0; i < total; i++) {
+      const p = i * 4;
+      const r = pixels[p];
+      const g = pixels[p + 1];
+      const b = pixels[p + 2];
+      const a = pixels[p + 3];
+      if (a < 20) continue;
+
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+      visiblePixels++;
+      if (max - min > 34 && max < 248) chromaticPixels++;
+
+      // Treat dark ink as a wall. One-pixel dilation below closes small anti-aliased gaps.
+      if (luminance < 112) barrier[i] = 1;
+    }
+
+    const dilated = barrier.slice();
+    for (let y = 1; y < CANVAS_SIZE - 1; y++) {
+      for (let x = 1; x < CANVAS_SIZE - 1; x++) {
+        const i = y * CANVAS_SIZE + x;
+        if (!barrier[i]) continue;
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            dilated[(y + oy) * CANVAS_SIZE + (x + ox)] = 1;
+          }
+        }
+      }
+    }
+
+    // Flood the open paper from the page edges. Anything non-ink that the flood
+    // cannot reach is an enclosed colouring surface.
+    const background = new Uint8Array(total);
+    const queue = new Int32Array(total);
+    let head = 0;
+    let tail = 0;
+
+    const enqueue = (index: number) => {
+      if (index < 0 || index >= total || dilated[index] || background[index]) return;
+      background[index] = 1;
+      queue[tail++] = index;
+    };
+
+    for (let x = 0; x < CANVAS_SIZE; x++) {
+      enqueue(x);
+      enqueue((CANVAS_SIZE - 1) * CANVAS_SIZE + x);
+    }
+    for (let y = 0; y < CANVAS_SIZE; y++) {
+      enqueue(y * CANVAS_SIZE);
+      enqueue(y * CANVAS_SIZE + CANVAS_SIZE - 1);
+    }
+
+    while (head < tail) {
+      const index = queue[head++];
+      const x = index % CANVAS_SIZE;
+      const y = Math.floor(index / CANVAS_SIZE);
+      if (x > 0) enqueue(index - 1);
+      if (x < CANVAS_SIZE - 1) enqueue(index + 1);
+      if (y > 0) enqueue(index - CANVAS_SIZE);
+      if (y < CANVAS_SIZE - 1) enqueue(index + CANVAS_SIZE);
+    }
+
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = CANVAS_SIZE;
+    maskCanvas.height = CANVAS_SIZE;
+    const maskCtx = maskCanvas.getContext('2d');
+    if (!maskCtx) {
+      setSubjectMaskUrl(null);
+      return;
+    }
+
+    const mask = maskCtx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
+    let enclosedPixels = 0;
+
+    for (let i = 0; i < total; i++) {
+      const p = i * 4;
+      const insideSurface = !dilated[i] && !background[i];
+      const value = insideSurface ? 255 : 0;
+      if (insideSurface) enclosedPixels++;
+      mask.data[p] = value;
+      mask.data[p + 1] = value;
+      mask.data[p + 2] = value;
+      mask.data[p + 3] = 255;
+    }
+
+    maskCtx.putImageData(mask, 0, 0);
+
+    // If the drawing is too open to form meaningful enclosed regions, don't
+    // force a bad mask; the semantic guide can still render normally.
+    const enclosedRatio = enclosedPixels / total;
+    setSubjectMaskUrl(enclosedRatio > 0.025 ? maskCanvas.toDataURL('image/png') : null);
+
+    const chromaticRatio = chromaticPixels / Math.max(1, visiblePixels);
+    setIsBlankLineArt(chromaticRatio < 0.015);
+  }, []);
 
   const loadArtwork = useCallback(() => {
     const canvas = lineCanvasRef.current;
@@ -77,6 +186,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         const x = (CANVAS_SIZE - width) / 2;
         const y = (CANVAS_SIZE - height) / 2;
         ctx.drawImage(img, x, y, width, height);
+        analyzeArtworkSurface(ctx);
       };
       img.src = customImageDataUrl;
       return;
@@ -88,11 +198,12 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
       const url = URL.createObjectURL(blob);
       img.onload = () => {
         ctx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        analyzeArtworkSurface(ctx);
         URL.revokeObjectURL(url);
       };
       img.src = url;
     }
-  }, [customImageDataUrl, svgString]);
+  }, [customImageDataUrl, svgString, analyzeArtworkSurface]);
 
   useEffect(() => {
     loadArtwork();
@@ -333,6 +444,25 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
             }}
           >
             <defs>
+              {subjectMaskUrl && (
+                <mask
+                  id="subjectSurfaceMask"
+                  maskUnits="userSpaceOnUse"
+                  x="0"
+                  y="0"
+                  width="100"
+                  height="100"
+                >
+                  <image
+                    href={subjectMaskUrl}
+                    x="0"
+                    y="0"
+                    width="100"
+                    height="100"
+                    preserveAspectRatio="none"
+                  />
+                </mask>
+              )}
               <filter id="pencilGrain" x="-8%" y="-8%" width="116%" height="116%">
                 <feTurbulence type="fractalNoise" baseFrequency=".55" numOctaves="3" seed="9" result="noise" />
                 <feColorMatrix
@@ -367,7 +497,10 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
               const isHighlight = region.kind === 'highlight';
 
               return (
-                <g key={`${region.kind}-${index}`}>
+                <g
+                  key={`${region.kind}-${index}`}
+                  mask={subjectMaskUrl && region.kind !== 'cast-shadow' ? 'url(#subjectSurfaceMask)' : undefined}
+                >
                   {!settings.showLearningMap && isHighlight && (
                     <path
                       d={path}
@@ -456,7 +589,9 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
               ? 'You changed the light direction. Update the lighting guide to move the highlight and shadow areas.'
               : settings.showLearningMap
               ? 'Learning map: gold = highlight, plum = form shadow, blue = cast shadow, indigo = deepest shadow.'
-              : `${mediumConfig.label} preview · change medium, light type, or colours and the preview updates instantly.`}
+              : isBlankLineArt
+                ? `${mediumConfig.label} preview · pale highlight areas mean “keep this lighter” on white paper. Shadows show where to build depth.`
+                : `${mediumConfig.label} preview · change medium, light type, or colours and the preview updates instantly.`}
           </div>
 
           {settings.showLearningMap && (
