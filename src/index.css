@@ -809,6 +809,10 @@ details[open] > summary .summary-chevron {
   line-height: 1.35;
 }
 
+.guide-outline-toggle {
+  margin-top: 8px;
+}
+
 .comparison-slider {
   display: flex;
   align-items: center;
