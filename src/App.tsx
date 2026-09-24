@@ -78,34 +78,56 @@ export default function App() {
   const handleAskGeminiAI = async () => {
     setIsAnalyzing(true);
     try {
-      // Get base64 PNG string
-      let base64 = customImageDataUrl;
-      if (!base64 && selectedSample) {
-        // Render SVG to HTMLImageElement -> Canvas -> PNG Data URL
-        base64 = await new Promise<string>((resolve) => {
-          const img = new Image();
-          const svgBlob = new Blob([selectedSample.svgString], { type: 'image/svg+xml;charset=utf-8' });
-          const url = URL.createObjectURL(svgBlob);
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = 600;
-            canvas.height = 600;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = '#FFFFFF';
-              ctx.fillRect(0, 0, 600, 600);
-              ctx.drawImage(img, 0, 0, 600, 600);
-            }
-            URL.revokeObjectURL(url);
-            resolve(canvas.toDataURL('image/png'));
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(url);
+      // Normalize the exact displayed artwork to a 600x600 PNG before analysis.
+      // This keeps Gemini's 0..100 guide coordinates aligned with the UI canvas,
+      // including portrait/landscape uploads that are letterboxed to fit.
+      const base64 = await new Promise<string>((resolve) => {
+        const img = new Image();
+        let objectUrl: string | null = null;
+
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 600;
+          canvas.height = 600;
+          const ctx = canvas.getContext('2d');
+
+          if (!ctx) {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
             resolve('');
-          };
-          img.src = url;
-        });
-      }
+            return;
+          }
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, 600, 600);
+
+          const scale = Math.min(600 / img.width, 600 / img.height);
+          const width = img.width * scale;
+          const height = img.height * scale;
+          const x = (600 - width) / 2;
+          const y = (600 - height) / 2;
+          ctx.drawImage(img, x, y, width, height);
+
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve(canvas.toDataURL('image/png'));
+        };
+
+        img.onerror = () => {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve('');
+        };
+
+        if (customImageDataUrl) {
+          img.src = customImageDataUrl;
+        } else if (selectedSample) {
+          const svgBlob = new Blob([selectedSample.svgString], {
+            type: 'image/svg+xml;charset=utf-8',
+          });
+          objectUrl = URL.createObjectURL(svgBlob);
+          img.src = objectUrl;
+        } else {
+          resolve('');
+        }
+      });
 
       if (!base64) {
         console.error('No valid image data for Gemini AI analysis');
@@ -118,6 +140,7 @@ export default function App() {
         body: JSON.stringify({
           imageBase64: base64,
           lightSource: light,
+          coloringMedium: settings.coloringMedium,
           mimeType: 'image/png',
         }),
       });
@@ -188,6 +211,7 @@ export default function App() {
                   activeTool={activeTool}
                   paintColor={paintColor}
                   clearPaintTrigger={clearPaintTrigger}
+                  guideRegions={geminiAnalysis?.regions || []}
                 />
               </div>
 
