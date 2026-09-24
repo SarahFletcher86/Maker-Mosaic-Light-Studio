@@ -386,6 +386,21 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
     'deep-shadow': { fill: '#59617F', stroke: '#3F4665' },
   } as const;
 
+  const darkPreviewSurface = settings.previewSurface === 'dark';
+  const outlineColors = darkPreviewSurface
+    ? {
+        highlight: '#FFF0A8',
+        'form-shadow': '#E2CCE8',
+        'cast-shadow': '#C9E6F1',
+        'deep-shadow': '#ECECF4',
+      }
+    : {
+        highlight: '#8D5B20',
+        'form-shadow': '#5B4963',
+        'cast-shadow': '#47687B',
+        'deep-shadow': '#363C52',
+      };
+
   const polygonAppearance = (region: LightingGuideRegion) => {
     if (settings.showLearningMap) {
       const map = learningColors[region.kind];
@@ -395,6 +410,9 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         opacity: clamp(.23 + region.strength * .18, .25, .48),
         filter: undefined,
         blendMode: 'normal' as const,
+        strokeWidth: .35,
+        strokeDasharray: undefined as string | undefined,
+        strokeOpacity: .95,
       };
     }
 
@@ -409,7 +427,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
 
     return {
       fill: isHighlight ? resolved.highlight : resolved.shadow,
-      stroke: 'none',
+      stroke: settings.showGuideOutlines ? outlineColors[region.kind] : 'none',
       opacity: clamp(
         baseOpacity *
           (.65 + region.strength * .65) *
@@ -424,6 +442,9 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         !isHighlight && settings.shadowPalette === 'same-color' ? 'multiply' as const :
         settings.coloringMedium === 'markers' ? 'multiply' as const :
         'normal' as const,
+      strokeWidth: settings.showGuideOutlines ? .42 : 0,
+      strokeDasharray: settings.showGuideOutlines ? '1.15 1.35' : undefined,
+      strokeOpacity: settings.showGuideOutlines ? .92 : 0,
     };
   };
 
@@ -561,7 +582,11 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
                     fill={appearance.fill}
                     fillOpacity={appearance.opacity}
                     stroke={appearance.stroke}
-                    strokeWidth={settings.showLearningMap ? .35 : 0}
+                    strokeWidth={appearance.strokeWidth}
+                    strokeDasharray={appearance.strokeDasharray}
+                    strokeOpacity={appearance.strokeOpacity}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                     filter={appearance.filter}
                     style={{ mixBlendMode: appearance.blendMode }}
                   />
@@ -696,6 +721,23 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
               <span>
                 <strong>Boost highlight visibility</strong>
                 <small>Helpful when planning on an uncoloured page.</small>
+              </span>
+            </label>
+
+            <label className="preview-toggle guide-outline-toggle">
+              <input
+                type="checkbox"
+                checked={settings.showGuideOutlines}
+                onChange={(event) =>
+                  setSettings(prev => ({
+                    ...prev,
+                    showGuideOutlines: event.target.checked,
+                  }))
+                }
+              />
+              <span>
+                <strong>Show dotted guide outlines</strong>
+                <small>Keeps subtle Auto highlights and shadows easy to find on any preview surface.</small>
               </span>
             </label>
           </div>
