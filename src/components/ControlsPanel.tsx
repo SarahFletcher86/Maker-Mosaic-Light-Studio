@@ -1,5 +1,5 @@
 import React from 'react';
-import { LightSource, ShadingSettings, ActiveTool, ColoringMedium } from '../types';
+import { LightSource, ShadingSettings, ActiveTool, ColoringMedium, AnalysisProvider } from '../types';
 import { Sun, Palette, PaintBucket, Move, Moon, Zap, Flame, Sparkles, Layers, Compass, HelpCircle, Eye } from 'lucide-react';
 
 interface ControlsPanelProps {
@@ -12,7 +12,9 @@ interface ControlsPanelProps {
   paintColor: string;
   setPaintColor: (color: string) => void;
   onClearPaint: () => void;
-  onAskGeminiAI: () => void;
+  onCreateLightingGuide: () => void;
+  analysisProvider: AnalysisProvider;
+  setAnalysisProvider: (provider: AnalysisProvider) => void;
   isAnalyzing: boolean;
 }
 
@@ -26,7 +28,9 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
   paintColor,
   setPaintColor,
   onClearPaint,
-  onAskGeminiAI,
+  onCreateLightingGuide,
+  analysisProvider,
+  setAnalysisProvider,
   isAnalyzing
 }) => {
   // Quick Light Direction Angles for Coloring Pages
@@ -85,13 +89,49 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
 
       {/* AI Master Assistant Button */}
       <button
-        onClick={onAskGeminiAI}
+        onClick={onCreateLightingGuide}
         disabled={isAnalyzing}
         className="w-full relative overflow-hidden group bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 text-slate-950 font-extrabold text-xs py-3 px-4 rounded-xl shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 transition-all flex items-center justify-center space-x-2 active:scale-[0.98] disabled:opacity-70"
       >
         <Sparkles className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : 'animate-bounce'}`} />
         <span>{isAnalyzing ? 'Mapping Light & Shadows...' : 'Create My Lighting Guide'}</span>
       </button>
+
+      {/* Development A/B provider switch. Remove or hide before public launch. */}
+      <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+            Test analysis model
+          </span>
+          <span className="text-[10px] text-slate-500">A/B only</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setAnalysisProvider('openai')}
+            disabled={isAnalyzing}
+            className={`px-2.5 py-2 rounded-lg border text-[11px] font-bold transition-all disabled:opacity-50 ${
+              analysisProvider === 'openai'
+                ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            OpenAI · GPT-6 Luna
+          </button>
+          <button
+            type="button"
+            onClick={() => setAnalysisProvider('gemini')}
+            disabled={isAnalyzing}
+            className={`px-2.5 py-2 rounded-lg border text-[11px] font-bold transition-all disabled:opacity-50 ${
+              analysisProvider === 'gemini'
+                ? 'bg-blue-500/15 border-blue-500/50 text-blue-300'
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            Gemini · 3.1 Flash-Lite
+          </button>
+        </div>
+      </div>
 
       {/* LIGHT DIRECTION ANGLE PRESETS */}
       <div className="space-y-2">
