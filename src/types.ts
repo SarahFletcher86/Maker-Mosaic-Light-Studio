@@ -6,6 +6,8 @@ export type ColoringMedium = 'colored-pencils' | 'markers' | 'watercolors' | 'di
 
 export type AnalysisProvider = 'openai' | 'gemini';
 
+export type PreviewSurface = 'white' | 'warm-paper' | 'cool-grey' | 'dark';
+
 export type ShadowPalette =
   | 'auto'
   | 'same-color'
@@ -56,6 +58,8 @@ export interface ShadingSettings {
   highlightPalette: HighlightPalette;
   highlightColor: string;
   showLearningMap: boolean;
+  previewSurface: PreviewSurface;
+  boostHighlightVisibility: boolean;
 }
 
 export interface ColorPalette {
