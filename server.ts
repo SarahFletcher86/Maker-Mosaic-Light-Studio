@@ -152,6 +152,7 @@ The goal is not photorealistic ray tracing. The goal is a clear, trustworthy lea
                 properties: {
                   kind: {
                     type: Type.STRING,
+                    format: "enum",
                     enum: ["highlight", "form-shadow", "cast-shadow", "deep-shadow"],
                   },
                   label: { type: Type.STRING },
