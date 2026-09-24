@@ -1,29 +1,26 @@
 import React, { useState } from 'react';
 import { SAMPLE_DRAWINGS } from './data/samples';
-import { SampleDrawing, LightSource, ShadingSettings, ActiveTool, GeminiLightingAnalysis, AnalysisProvider } from './types';
+import { SampleDrawing, LightSource, ShadingSettings, GeminiLightingAnalysis, AnalysisProvider } from './types';
 import { Header } from './components/Header';
 import { SamplePicker } from './components/SamplePicker';
 import { LightingCanvas } from './components/LightingCanvas';
 import { ControlsPanel } from './components/ControlsPanel';
 import { GeminiLightGuide } from './components/GeminiLightGuide';
-import { TechExplainerModal } from './components/TechExplainerModal';
-import { Scratchpad } from './components/Scratchpad';
 import { CameraScanModal } from './components/CameraScanModal';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'studio' | 'draw'>('studio');
   const [selectedSample, setSelectedSample] = useState<SampleDrawing>(SAMPLE_DRAWINGS[0]);
   const [customImageDataUrl, setCustomImageDataUrl] = useState<string | undefined>(undefined);
 
   // Light Source State
   const [light, setLight] = useState<LightSource>({
-    x: 65,
-    y: 25,
-    z: 60,
-    color: '#FFF2C6',
+    x: 25,
+    y: 20,
+    z: 70,
+    color: '#FFF4D6',
     intensity: 0.95,
     radius: 220,
-    type: 'point',
+    type: 'directional',
     softness: 8,
   });
 
@@ -42,15 +39,10 @@ export default function App() {
     specularShininess: 32,
     lineThreshold: 180,
     invertLines: false,
-    showGuideMarkers: true,
-    showLightRays: true,
+    showGuideMarkers: false,
+    showLightRays: false,
     coloringMedium: 'colored-pencils',
   });
-
-  // Active Tool & Color Bucket
-  const [activeTool, setActiveTool] = useState<ActiveTool>('light-drag');
-  const [paintColor, setPaintColor] = useState<string>('#E06D53');
-  const [clearPaintTrigger, setClearPaintTrigger] = useState<number>(0);
 
   // AI lighting analysis state. OpenAI is the default candidate; Gemini remains available for A/B testing.
   const [geminiAnalysis, setGeminiAnalysis] = useState<GeminiLightingAnalysis | null>(null);
@@ -58,7 +50,6 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
   // Modals
-  const [isTechExplainerOpen, setIsTechExplainerOpen] = useState<boolean>(false);
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
 
   // Handle Preset Line Art Selection
@@ -72,7 +63,6 @@ export default function App() {
   const handleCustomImage = (dataUrl: string) => {
     setCustomImageDataUrl(dataUrl);
     setGeminiAnalysis(null);
-    setActiveTab('studio');
   };
 
   // Call the selected server-side vision provider for lighting analysis.
@@ -161,44 +151,20 @@ export default function App() {
     }
   };
 
-  // Apply Gemini Recommended Palette Swatches to Canvas Shader
-  const handleApplyPalette = (palette: GeminiLightingAnalysis['palette']) => {
-    setLight((prev) => ({ ...prev, color: palette.highlight }));
-    setSettings((prev) => ({
-      ...prev,
-      shadowColor: palette.shadow,
-      rimLightColor: palette.rimLight,
-    }));
-    setPaintColor(palette.base);
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
       {/* Top Navigation Header */}
-      <Header
-        onOpenTechExplainer={() => setIsTechExplainerOpen(true)}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
+      <Header />
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {activeTab === 'draw' ? (
-          /* Scratchpad Draw Mode */
-          <Scratchpad
-            onApplyDrawing={(dataUrl) => handleCustomImage(dataUrl)}
-            onCancel={() => setActiveTab('studio')}
-          />
-        ) : (
-          /* Studio Mode */
-          <>
+        <>
             {/* Top Row: Sample Picker */}
             <SamplePicker
               selectedSampleId={customImageDataUrl ? 'custom' : selectedSample.id}
               onSelectSample={handleSelectSample}
               onCustomImageUpload={handleCustomImage}
               onOpenCamera={() => setIsCameraOpen(true)}
-              onOpenScratchpad={() => setActiveTab('draw')}
             />
 
             {/* Middle Row: Canvas Stage + Controls Panel */}
@@ -211,9 +177,9 @@ export default function App() {
                   light={light}
                   setLight={setLight}
                   settings={settings}
-                  activeTool={activeTool}
-                  paintColor={paintColor}
-                  clearPaintTrigger={clearPaintTrigger}
+                  activeTool="light-drag"
+                  paintColor="#E06D53"
+                  clearPaintTrigger={0}
                   guideRegions={geminiAnalysis?.regions || []}
                 />
               </div>
@@ -225,11 +191,6 @@ export default function App() {
                   setLight={setLight}
                   settings={settings}
                   setSettings={setSettings}
-                  activeTool={activeTool}
-                  setActiveTool={setActiveTool}
-                  paintColor={paintColor}
-                  setPaintColor={setPaintColor}
-                  onClearPaint={() => setClearPaintTrigger((prev) => prev + 1)}
                   onCreateLightingGuide={handleCreateLightingGuide}
                   analysisProvider={analysisProvider}
                   setAnalysisProvider={setAnalysisProvider}
@@ -242,18 +203,10 @@ export default function App() {
             <GeminiLightGuide
               analysis={geminiAnalysis}
               isAnalyzing={isAnalyzing}
-              onApplyPalette={handleApplyPalette}
               onAskGeminiAI={handleCreateLightingGuide}
             />
-          </>
-        )}
+        </>
       </main>
-
-      {/* Modals */}
-      <TechExplainerModal
-        isOpen={isTechExplainerOpen}
-        onClose={() => setIsTechExplainerOpen(false)}
-      />
 
       <CameraScanModal
         isOpen={isCameraOpen}
