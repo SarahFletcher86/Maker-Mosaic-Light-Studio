@@ -42,6 +42,10 @@ export default function App() {
     showGuideMarkers: false,
     showLightRays: false,
     coloringMedium: 'colored-pencils',
+    shadowPalette: 'auto',
+    highlightPalette: 'auto',
+    highlightColor: '#FFF2C7',
+    showLearningMap: false,
   });
 
   // AI lighting analysis state. OpenAI is the default candidate; Gemini remains available for A/B testing.
@@ -152,12 +156,12 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+    <div className="studio-app">
       {/* Top Navigation Header */}
       <Header />
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <main className="studio-main">
         <>
             {/* Top Row: Sample Picker */}
             <SamplePicker
@@ -168,9 +172,9 @@ export default function App() {
             />
 
             {/* Middle Row: Canvas Stage + Controls Panel */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="studio-workspace-grid">
               {/* Left Column: Interactive Canvas Stage (7 cols) */}
-              <div className="lg:col-span-7 space-y-6">
+              <div className="studio-canvas-column">
                 <LightingCanvas
                   svgString={selectedSample?.svgString}
                   customImageDataUrl={customImageDataUrl}
@@ -185,7 +189,7 @@ export default function App() {
               </div>
 
               {/* Right Column: Light & Shader Controls (5 cols) */}
-              <div className="lg:col-span-5 space-y-6">
+              <div className="studio-controls-column">
                 <ControlsPanel
                   light={light}
                   setLight={setLight}
