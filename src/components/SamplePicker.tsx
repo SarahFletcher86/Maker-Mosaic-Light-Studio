@@ -76,7 +76,7 @@ export const SamplePicker: React.FC<SamplePickerProps> = ({
                 }`}
               >
                 <div
-                  className="aspect-square w-full bg-white rounded-lg overflow-hidden"
+                  className="aspect-square w-full bg-white rounded-lg overflow-hidden flex items-center justify-center [&>svg]:w-full [&>svg]:h-full [&>svg]:max-w-full [&>svg]:max-h-full [&>svg]:block"
                   dangerouslySetInnerHTML={{ __html: sample.svgString }}
                 />
                 <p className="text-[10px] font-semibold text-slate-300 mt-1.5 truncate">{sample.name}</p>
