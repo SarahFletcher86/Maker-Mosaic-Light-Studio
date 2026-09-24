@@ -169,7 +169,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
     const shadingCanvas = shadingCanvasRef.current;
     if (!shadingCanvas) return;
     const link = document.createElement('a');
-    link.download = `ChromaLight-Shaded-Artwork-${Date.now()}.png`;
+    link.download = `Maker-Mosaic-Light-Guide-${Date.now()}.png`;
     link.href = shadingCanvas.toDataURL('image/png');
     link.click();
   };
