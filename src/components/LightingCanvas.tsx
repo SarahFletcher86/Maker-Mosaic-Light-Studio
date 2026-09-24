@@ -454,9 +454,9 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         !isHighlight && settings.shadowPalette === 'same-color' ? 'multiply' as const :
         settings.coloringMedium === 'markers' ? 'multiply' as const :
         'normal' as const,
-      strokeWidth: subtleOutline ? .20 : 0,
-      strokeDasharray: subtleOutline ? '.08 1.15' : undefined,
-      strokeOpacity: subtleOutline ? .68 : 0,
+      strokeWidth: subtleOutline ? .18 : 0,
+      strokeDasharray: undefined as string | undefined,
+      strokeOpacity: subtleOutline ? .52 : 0,
     };
   };
 
@@ -749,7 +749,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
               />
               <span>
                 <strong>Show subtle guide edges</strong>
-                <small>Adds a light dotted edge only where faint guide areas need extra definition.</small>
+                <small>Adds a faint edge only where subtle guide areas need extra definition.</small>
               </span>
             </label>
           </div>
