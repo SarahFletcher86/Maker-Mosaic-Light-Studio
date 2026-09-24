@@ -18,6 +18,28 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function smoothSvgPath(region: LightingGuideRegion) {
+  const points = region.points.map(point => ({
+    x: clamp(point.x, 0, 100),
+    y: clamp(point.y, 0, 100),
+  }));
+  if (points.length < 3) return '';
+
+  const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  });
+
+  const start = midpoint(points[points.length - 1], points[0]);
+  let path = `M ${start.x} ${start.y}`;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const mid = midpoint(point, next);
+    path += ` Q ${point.x} ${point.y} ${mid.x} ${mid.y}`;
+  });
+  return path + ' Z';
+}
+
 export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   svgString,
   customImageDataUrl,
@@ -123,12 +145,24 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
     region: LightingGuideRegion,
   ) => {
     if (!region.points.length) return false;
+    const points = region.points.map(point => ({
+      x: (clamp(point.x, 0, 100) / 100) * CANVAS_SIZE,
+      y: (clamp(point.y, 0, 100) / 100) * CANVAS_SIZE,
+    }));
+    if (points.length < 3) return false;
+
+    const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+    });
+
+    const start = midpoint(points[points.length - 1], points[0]);
     ctx.beginPath();
-    region.points.forEach((point, index) => {
-      const x = (clamp(point.x, 0, 100) / 100) * CANVAS_SIZE;
-      const y = (clamp(point.y, 0, 100) / 100) * CANVAS_SIZE;
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    ctx.moveTo(start.x, start.y);
+    points.forEach((point, index) => {
+      const next = points[(index + 1) % points.length];
+      const mid = midpoint(point, next);
+      ctx.quadraticCurveTo(point.x, point.y, mid.x, mid.y);
     });
     ctx.closePath();
     return true;
@@ -321,15 +355,13 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
 
             {guideRegions.map((region, index) => {
               const appearance = polygonAppearance(region);
-              const points = region.points
-                .map(point => `${clamp(point.x, 0, 100)},${clamp(point.y, 0, 100)}`)
-                .join(' ');
+              const path = smoothSvgPath(region);
               const isHighlight = region.kind === 'highlight';
 
               return (
                 <g key={`${region.kind}-${index}`}>
-                  <polygon
-                    points={points}
+                  <path
+                    d={path}
                     fill={appearance.fill}
                     fillOpacity={appearance.opacity}
                     stroke={appearance.stroke}
@@ -338,8 +370,8 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
                     style={{ mixBlendMode: appearance.blendMode }}
                   />
                   {!settings.showLearningMap && mediumConfig.hatch && (
-                    <polygon
-                      points={points}
+                    <path
+                      d={path}
                       fill={isHighlight ? 'url(#pencilHighlightHatch)' : 'url(#pencilShadowHatch)'}
                       opacity={clamp(appearance.opacity * 1.15, .12, .55)}
                       style={{ mixBlendMode: isHighlight ? 'screen' : 'multiply' }}
