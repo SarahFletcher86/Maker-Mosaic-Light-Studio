@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { LightSource, ShadingSettings, ActiveTool, LightingGuideRegion } from '../types';
 import { processLineArtSurface, renderLightingOverlay, floodFill, CanvasShadingContext } from '../utils/normalMap';
-import { Sun, Moon, Sliders, Move, Download, RefreshCw, ZoomIn, ZoomOut, Eye } from 'lucide-react';
+import { Sun, Moon, Download, Eye, ChevronDown } from 'lucide-react';
 
 interface LightingCanvasProps {
   svgString?: string;
@@ -34,8 +34,8 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   const [shadingCtx, setShadingCtx] = useState<CanvasShadingContext | null>(null);
   const [isDraggingLight, setIsDraggingLight] = useState(false);
   const [isDraggingShadow, setIsDraggingShadow] = useState(false);
-  const [splitPosition, setSplitPosition] = useState<number>(100); // 100 = full shaded view, <100 = split comparison
-  const [showLightPuck, setShowLightPuck] = useState(true);
+  const [splitPosition, setSplitPosition] = useState<number>(0);
+  const [showLightPuck, setShowLightPuck] = useState(false);
 
   const CANVAS_SIZE = 600;
 
@@ -142,7 +142,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
 
-    if (activeTool === 'light-drag') {
+    if (activeTool === 'light-drag' && showLightPuck) {
       setLight(prev => ({ ...prev, x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(95, y)) }));
     } else if (activeTool === 'bucket-fill' && shadingCtx) {
       const baseCanvas = basePaintCanvasRef.current;
@@ -172,13 +172,54 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
     }
   };
 
-  // Download Image Result
+  // Download the original artwork with the semantic guide painted on top.
   const handleDownload = () => {
-    const shadingCanvas = shadingCanvasRef.current;
-    if (!shadingCanvas) return;
+    const lineCanvas = lineCanvasRef.current;
+    if (!lineCanvas) return;
+
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = CANVAS_SIZE;
+    exportCanvas.height = CANVAS_SIZE;
+    const ctx = exportCanvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(lineCanvas, 0, 0);
+
+    const colors = {
+      highlight: { fill: '#FDE68A', stroke: '#F59E0B' },
+      'form-shadow': { fill: '#A78BFA', stroke: '#7C3AED' },
+      'cast-shadow': { fill: '#60A5FA', stroke: '#2563EB' },
+      'deep-shadow': { fill: '#4338CA', stroke: '#312E81' },
+    } as const;
+
+    guideRegions.forEach((region) => {
+      if (!region.points.length) return;
+      const color = colors[region.kind];
+      const opacity = Math.max(0.12, Math.min(0.46, region.strength * 0.42));
+
+      ctx.beginPath();
+      region.points.forEach((point, index) => {
+        const x = (Math.max(0, Math.min(100, point.x)) / 100) * CANVAS_SIZE;
+        const y = (Math.max(0, Math.min(100, point.y)) / 100) * CANVAS_SIZE;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+
+      ctx.globalAlpha = opacity;
+      ctx.fillStyle = color.fill;
+      ctx.fill();
+
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = color.stroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    });
+
+    ctx.globalAlpha = 1;
     const link = document.createElement('a');
     link.download = `Maker-Mosaic-Light-Guide-${Date.now()}.png`;
-    link.href = shadingCanvas.toDataURL('image/png');
+    link.href = exportCanvas.toDataURL('image/png');
     link.click();
   };
 
@@ -189,11 +230,13 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         <div className="flex items-center space-x-2">
           <span className="font-bold text-white flex items-center space-x-1.5">
             <Sun className="w-4 h-4 text-amber-400" />
-            <span>Interactive Lighting Stage</span>
+            <span>Your artwork</span>
           </span>
-          <span className="bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-mono">
-            {activeTool === 'light-drag' ? 'Drag Light (☀️) or Shadow (🌙) Puck' : 'Click region to Bucket Fill'}
-          </span>
+          {showLightPuck && (
+            <span className="bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded text-[10px]">
+              Drag the light to a custom position
+            </span>
+          )}
         </div>
 
         <div className="flex items-center space-x-2">
@@ -205,10 +248,10 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                 : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
             }`}
-            title="Toggle Light & Shadow Pucks"
+            title="Set a custom light position"
           >
             <Eye className="w-3.5 h-3.5 inline mr-1" />
-            <span>Pucks</span>
+            <span>{showLightPuck ? 'Done' : 'Custom light'}</span>
           </button>
 
           {/* Download */}
@@ -217,7 +260,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
             className="flex items-center space-x-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1 rounded-lg transition-all shadow-sm shadow-amber-500/20"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Export</span>
+            <span>Download guide</span>
           </button>
         </div>
       </div>
@@ -226,7 +269,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
       <div
         ref={containerRef}
         onPointerDown={handleContainerPointerDown}
-        className="relative w-full aspect-square max-w-[550px] bg-white rounded-xl shadow-2xl overflow-hidden border-2 border-slate-700 cursor-crosshair touch-none select-none"
+        className={`relative w-full aspect-square max-w-[550px] bg-white rounded-xl shadow-2xl overflow-hidden border-2 border-slate-700 touch-none select-none ${showLightPuck ? 'cursor-crosshair' : 'cursor-default'}`}
       >
         {/* Layer 1: Line Art Original Canvas */}
         <canvas
@@ -404,7 +447,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         )}
 
         {/* Comparison Split Line & Handle */}
-        {splitPosition < 100 && (
+        {splitPosition > 0 && splitPosition < 100 && (
           <div
             className="absolute top-0 bottom-0 z-10 w-0.5 bg-amber-400 shadow-md pointer-events-none"
             style={{ left: `${splitPosition}%` }}
@@ -418,7 +461,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
 
       {guideRegions.length > 0 && (
         <div className="w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-200">
-          AI guide is shown over your original artwork. Use the slider below only if you want to compare it with the instant local preview.
+          Your guide is shown directly on the original artwork.
         </div>
       )}
 
@@ -432,19 +475,24 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         </div>
       )}
 
-      {/* Canvas Footer Controls (Split View Slider) */}
-      <div className="w-full flex items-center space-x-3 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-xs">
-        <span className="text-slate-400 font-medium whitespace-nowrap">Original</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={splitPosition}
-          onChange={(e) => setSplitPosition(Number(e.target.value))}
-          className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-        />
-        <span className="text-amber-400 font-bold whitespace-nowrap">Instant Preview ({splitPosition}%)</span>
-      </div>
+      <details className="group w-full border-t border-slate-800 pt-2">
+        <summary className="list-none cursor-pointer flex items-center justify-between text-[11px] font-semibold text-slate-500 hover:text-slate-300">
+          <span>Compare with instant preview</span>
+          <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="mt-2 flex items-center space-x-3 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-xs">
+          <span className="text-slate-400 font-medium whitespace-nowrap">Original</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={splitPosition}
+            onChange={(e) => setSplitPosition(Number(e.target.value))}
+            className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+          />
+          <span className="text-amber-400 font-bold whitespace-nowrap">Preview {splitPosition}%</span>
+        </div>
+      </details>
     </div>
   );
 };
