@@ -136,7 +136,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
       case 'digital':
         return { label: 'Digital', shadowBase: 0.25, highlightBase: 0.20, filter: 'url(#digitalSoft)', hatch: false };
       default:
-        return { label: 'Pencil', shadowBase: 0.22, highlightBase: 0.16, filter: 'url(#pencilRough)', hatch: true };
+        return { label: 'Pencil', shadowBase: 0.17, highlightBase: 0.10, filter: 'url(#pencilGrain)', hatch: false };
     }
   }, [settings.coloringMedium]);
 
@@ -333,9 +333,20 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
             }}
           >
             <defs>
-              <filter id="pencilRough" x="-4%" y="-4%" width="108%" height="108%">
-                <feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="2" seed="9" result="noise" />
-                <feDisplacementMap in="SourceGraphic" in2="noise" scale=".22" />
+              <filter id="pencilGrain" x="-8%" y="-8%" width="116%" height="116%">
+                <feTurbulence type="fractalNoise" baseFrequency=".55" numOctaves="3" seed="9" result="noise" />
+                <feColorMatrix
+                  in="noise"
+                  type="matrix"
+                  values="
+                    0.35 0 0 0 0.34
+                    0 0.35 0 0 0.34
+                    0 0 0.35 0 0.34
+                    0 0 0 .22 0"
+                  result="grain"
+                />
+                <feComposite in="grain" in2="SourceGraphic" operator="in" result="texturedGrain" />
+                <feBlend in="SourceGraphic" in2="texturedGrain" mode="multiply" />
               </filter>
               <filter id="watercolor" x="-6%" y="-6%" width="112%" height="112%">
                 <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="4" result="noise" />
@@ -345,19 +356,11 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
               <filter id="digitalSoft" x="-4%" y="-4%" width="108%" height="108%">
                 <feGaussianBlur stdDeviation=".16" />
               </filter>
-              <pattern id="pencilShadowHatch" width="2.2" height="2.2" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
-                <line x1="0" y1="0" x2="0" y2="2.2" stroke={resolved.shadow} strokeWidth=".28" opacity=".45" />
-              </pattern>
-              <pattern id="pencilHighlightHatch" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
-                <line x1="0" y1="0" x2="0" y2="2.4" stroke={resolved.highlight} strokeWidth=".28" opacity=".40" />
-              </pattern>
             </defs>
 
             {guideRegions.map((region, index) => {
               const appearance = polygonAppearance(region);
               const path = smoothSvgPath(region);
-              const isHighlight = region.kind === 'highlight';
-
               return (
                 <g key={`${region.kind}-${index}`}>
                   <path
@@ -369,14 +372,6 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
                     filter={appearance.filter}
                     style={{ mixBlendMode: appearance.blendMode }}
                   />
-                  {!settings.showLearningMap && mediumConfig.hatch && (
-                    <path
-                      d={path}
-                      fill={isHighlight ? 'url(#pencilHighlightHatch)' : 'url(#pencilShadowHatch)'}
-                      opacity={clamp(appearance.opacity * 1.15, .12, .55)}
-                      style={{ mixBlendMode: isHighlight ? 'screen' : 'multiply' }}
-                    />
-                  )}
                 </g>
               );
             })}
