@@ -22,7 +22,7 @@ export const GeminiLightGuide: React.FC<GeminiLightGuideProps> = ({
           <Sparkles className="w-6 h-6" />
         </div>
         <div>
-          <h3 className="text-base font-bold text-white">Gemini AI Analyzing Light & Forms...</h3>
+          <h3 className="text-base font-bold text-white">Mapping Light & Forms...</h3>
           <p className="text-xs text-slate-400 mt-1">
             Analyzing 3D geometry, plane normals, core shadows, and highlight zones for your line art
           </p>
@@ -38,9 +38,9 @@ export const GeminiLightGuide: React.FC<GeminiLightGuideProps> = ({
           <Sparkles className="w-5 h-5" />
         </div>
         <div>
-          <h3 className="text-sm font-bold text-white">Gemini AI Light Master Guide</h3>
+          <h3 className="text-sm font-bold text-white">Light & Shadow Guide</h3>
           <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-            Click "Ask Gemini AI" anytime to analyze where highlights, core shadows, and ambient bounce light fall on your line art!
+            Create a guide to map likely highlights, form shadows, cast shadows, and deep creases directly onto your artwork.
           </p>
         </div>
         <button
@@ -48,7 +48,7 @@ export const GeminiLightGuide: React.FC<GeminiLightGuideProps> = ({
           className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-md hover:shadow-amber-500/20 transition-all inline-flex items-center space-x-1.5"
         >
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Analyze Lighting with Gemini AI</span>
+          <span>Create Lighting Guide</span>
         </button>
       </div>
     );
@@ -155,6 +155,63 @@ export const GeminiLightGuide: React.FC<GeminiLightGuideProps> = ({
           <p className="text-xs text-slate-300 leading-normal">{analysis.colorTheoryTip}</p>
         </div>
       </div>
+
+      {/* Semantic regions mapped directly onto the original artwork */}
+      {analysis.regions?.length > 0 && (
+        <div className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-xl space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
+              <Layers className="w-3.5 h-3.5 text-amber-400" />
+              <span>Mapped Light & Shadow Zones</span>
+            </h4>
+            <span className="text-[10px] text-slate-400">{analysis.regions.length} guide regions on your artwork</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {analysis.regions.slice(0, 12).map((region, idx) => {
+              const style = {
+                highlight: {
+                  dot: 'text-amber-300',
+                  badge: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+                  label: 'Highlight',
+                },
+                'form-shadow': {
+                  dot: 'text-violet-300',
+                  badge: 'bg-violet-500/10 text-violet-300 border-violet-500/30',
+                  label: 'Form shadow',
+                },
+                'cast-shadow': {
+                  dot: 'text-blue-300',
+                  badge: 'bg-blue-500/10 text-blue-300 border-blue-500/30',
+                  label: 'Cast shadow',
+                },
+                'deep-shadow': {
+                  dot: 'text-indigo-300',
+                  badge: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30',
+                  label: 'Deep shadow',
+                },
+              }[region.kind];
+
+              return (
+                <div key={`${region.kind}-${idx}`} className="bg-slate-900 border border-slate-800 rounded-lg p-2.5">
+                  <div className="flex items-start gap-2">
+                    <span className={`mt-0.5 ${style.dot}`}>●</span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs font-bold text-white">{region.label}</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold ${style.badge}`}>
+                          {style.label}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-normal mt-1">{region.explanation}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Step-by-Step Rendering Sequence */}
       <div className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-xl space-y-2">
