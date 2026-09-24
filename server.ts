@@ -9,10 +9,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-// Increase payload limit for image base64 data
 app.use(express.json({ limit: "25mb" }));
 
-// Lazy initialize Gemini client
 function getGenAI() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -22,47 +20,93 @@ function getGenAI() {
     apiKey,
     httpOptions: {
       headers: {
-        "User-Agent": "aistudio-build",
+        "User-Agent": "maker-mosaic-light-studio",
       },
     },
   });
 }
 
-// API Health Endpoint
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Gemini Lighting & Shading Analysis API
 app.post("/api/gemini/analyze-lighting", async (req, res) => {
   try {
-    const { imageBase64, lightSource, mimeType = "image/png" } = req.body;
+    const {
+      imageBase64,
+      lightSource,
+      coloringMedium = "colored-pencils",
+      mimeType = "image/png",
+    } = req.body;
 
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing imageBase64 data" });
     }
 
     const ai = getGenAI();
-
-    // Remove data URL prefix if present (handles any mime type)
     const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, "");
-    const safeMimeType = (mimeType && !mimeType.includes("svg")) ? mimeType : "image/png";
+    const safeMimeType =
+      mimeType && !mimeType.includes("svg") ? mimeType : "image/png";
 
-    const promptText = `You are a friendly, expert coloring book instructor helping a colorist know exactly where to place highlights, midtones, and shadows on this line-art coloring page.
-Target Light Source Angle:
-- Light Position: X=${Math.round(lightSource?.x || 50)}%, Y=${Math.round(lightSource?.y || 20)}% (0,0 is top-left, 100,100 is bottom-right)
-- Light Angle: Light is coming from the ${lightSource?.x < 40 ? 'Top-Left' : lightSource?.x > 60 ? 'Top-Right' : 'Overhead/Center'}
-- Light Elevation: ${lightSource?.z || 50}% height
-- Light Tint: ${lightSource?.color || '#FFFAF0'}
+    const lightX = Math.round(lightSource?.x ?? 50);
+    const lightY = Math.round(lightSource?.y ?? 20);
+    const lightZ = Math.round(lightSource?.z ?? 60);
+    const lightDirection =
+      lightX < 40
+        ? "upper-left"
+        : lightX > 60
+          ? "upper-right"
+          : lightY > 60
+            ? "lower/under-light"
+            : "overhead/center";
 
-Analyze the forms, curves, folds, and shapes in this coloring page image. Give encouraging, practical advice in plain language for colored pencil artists, alcohol marker fans, and watercolorists:
+    const promptText = `You are the vision and lighting-analysis engine for Maker Mosaic Light Studio.
 
-1. Title & Executive Summary: Inspiring description of the subject and light direction.
-2. Highlights & Gel Pen Spots: Specific advice on which curves, tops of shapes, snouts, petals, or hair locks get the brightest light or white gel pen dots.
-3. Shadows & Deep Pencil Pressure: Exactly where to press harder with dark pencils or apply darker shade markers (folds, under edges, behind overlapping shapes).
-4. Color Blending Tip: Warm vs cool color shifts (e.g., using light yellow/cream pencils for highlights and deep purple/indigo for shadows).
-5. 4-Step Coloring Order: 4 step-by-step instructions on what to color first (e.g. 1. Lay base colors, 2. Blend midtones, 3. Shade deep folds, 4. Pop highlights).
-6. Recommended 4-tone palette (Base, Highlight, Shadow, Rim) hex codes.`;
+The user has uploaded artwork or a coloring page and placed a virtual light source. Your job is to TEACH where light and shadow should be added while preserving the user's original artwork.
+
+LIGHT SETUP
+- Light position on the displayed page: X=${lightX}%, Y=${lightY}%.
+- Approximate direction: ${lightDirection}.
+- Elevation/distance: ${lightZ}%.
+- Light tint: ${lightSource?.color || "#FFFAF0"}.
+- User medium: ${coloringMedium}.
+
+IMPORTANT SPATIAL RULES
+- The supplied image has already been normalized to the exact square canvas used by the app.
+- All region coordinates MUST use that same image coordinate system.
+- x=0 is the left edge, x=100 is the right edge.
+- y=0 is the top edge, y=100 is the bottom edge.
+- Do not redraw, reinterpret, or alter the line art.
+- Infer the likely 3D forms and overlaps from the image: spheres/heads, cylinders, folds, petals, leaves, boxes, flat planes, objects in front of other objects, etc.
+- Prefer useful, conservative guidance over pretending uncertain geometry is exact.
+
+SEMANTIC GUIDE REGIONS
+Return 6-16 practical polygon regions that can be overlaid on the ORIGINAL image.
+Each region must be one of:
+- "highlight": surfaces most directly facing the light.
+- "form-shadow": the turning-away side of a rounded or angled form.
+- "cast-shadow": shadow one object would cast onto another visible surface.
+- "deep-shadow": occlusion/crease/contact areas receiving very little light.
+
+For each region:
+- points: 3-10 ordered polygon vertices in 0..100 coordinates.
+- label: a short human label such as "top of mushroom cap".
+- explanation: one concise sentence explaining why that area receives this light/shadow.
+- strength: 0.15..1.0.
+- Keep polygons local to the real object surface. Do NOT return giant generic page quadrants.
+- Do NOT shade blank page/background unless it is clearly part of the illustration.
+- If geometry is ambiguous, use a smaller region rather than inventing a huge one.
+
+TEACHING RESPONSE
+Also give:
+1. A short title and summary.
+2. Specific highlight advice.
+3. Specific form/cast/deep-shadow advice.
+4. A medium-aware blending tip for ${coloringMedium}.
+5. A four-step coloring order.
+6. A four-tone palette with valid hex codes (base, highlight, shadow, rimLight).
+
+The goal is not photorealistic ray tracing. The goal is a clear, trustworthy learning guide that helps a hobby artist understand WHY each area is lighter or darker.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-3.6-flash",
@@ -74,9 +118,7 @@ Analyze the forms, curves, folds, and shapes in this coloring page image. Give e
               data: cleanBase64,
             },
           },
-          {
-            text: promptText,
-          },
+          { text: promptText },
         ],
       },
       config: {
@@ -96,12 +138,39 @@ Analyze the forms, curves, folds, and shapes in this coloring page image. Give e
             palette: {
               type: Type.OBJECT,
               properties: {
-                base: { type: Type.STRING, description: "Hex color code e.g. #E06D53" },
-                highlight: { type: Type.STRING, description: "Hex color code e.g. #FFD1A9" },
-                shadow: { type: Type.STRING, description: "Hex color code e.g. #6B2D5C" },
-                rimLight: { type: Type.STRING, description: "Hex color code e.g. #5CE0D8" },
+                base: { type: Type.STRING, description: "Hex color code" },
+                highlight: { type: Type.STRING, description: "Hex color code" },
+                shadow: { type: Type.STRING, description: "Hex color code" },
+                rimLight: { type: Type.STRING, description: "Hex color code" },
               },
               required: ["base", "highlight", "shadow", "rimLight"],
+            },
+            regions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  kind: {
+                    type: Type.STRING,
+                    enum: ["highlight", "form-shadow", "cast-shadow", "deep-shadow"],
+                  },
+                  label: { type: Type.STRING },
+                  explanation: { type: Type.STRING },
+                  strength: { type: Type.NUMBER },
+                  points: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        x: { type: Type.NUMBER },
+                        y: { type: Type.NUMBER },
+                      },
+                      required: ["x", "y"],
+                    },
+                  },
+                },
+                required: ["kind", "label", "explanation", "strength", "points"],
+              },
             },
           },
           required: [
@@ -112,6 +181,7 @@ Analyze the forms, curves, folds, and shapes in this coloring page image. Give e
             "colorTheoryTip",
             "stepByStepGuide",
             "palette",
+            "regions",
           ],
         },
       },
@@ -122,6 +192,25 @@ Analyze the forms, curves, folds, and shapes in this coloring page image. Give e
     }
 
     const analysisData = JSON.parse(response.text);
+
+    if (Array.isArray(analysisData.regions)) {
+      analysisData.regions = analysisData.regions
+        .filter((region: any) => Array.isArray(region.points) && region.points.length >= 3)
+        .map((region: any) => ({
+          ...region,
+          strength: Math.max(0.15, Math.min(1, Number(region.strength) || 0.5)),
+          points: region.points
+            .slice(0, 10)
+            .map((p: any) => ({
+              x: Math.max(0, Math.min(100, Number(p.x) || 0)),
+              y: Math.max(0, Math.min(100, Number(p.y) || 0)),
+            })),
+        }))
+        .slice(0, 20);
+    } else {
+      analysisData.regions = [];
+    }
+
     return res.json({ success: true, data: analysisData });
   } catch (err: any) {
     console.error("Error analyzing lighting with Gemini:", err);
@@ -132,7 +221,6 @@ Analyze the forms, curves, folds, and shapes in this coloring page image. Give e
 });
 
 async function startServer() {
-  // Vite middleware setup for dev vs production static serving
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
