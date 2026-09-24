@@ -46,6 +46,8 @@ export default function App() {
     highlightPalette: 'auto',
     highlightColor: '#FFF2C7',
     showLearningMap: false,
+    previewSurface: 'white',
+    boostHighlightVisibility: true,
   });
 
   // AI lighting analysis state. OpenAI is the default candidate; Gemini remains available for A/B testing.
@@ -191,6 +193,7 @@ export default function App() {
                   light={light}
                   setLight={setLight}
                   settings={settings}
+                  setSettings={setSettings}
                   guideRegions={geminiAnalysis?.regions || []}
                   guideNeedsUpdate={guideNeedsUpdate}
                 />
