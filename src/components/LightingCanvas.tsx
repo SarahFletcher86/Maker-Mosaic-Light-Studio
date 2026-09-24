@@ -9,6 +9,7 @@ interface LightingCanvasProps {
   setLight: React.Dispatch<React.SetStateAction<LightSource>>;
   settings: ShadingSettings;
   guideRegions: LightingGuideRegion[];
+  guideNeedsUpdate: boolean;
 }
 
 const CANVAS_SIZE = 600;
@@ -24,6 +25,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   setLight,
   settings,
   guideRegions,
+  guideNeedsUpdate,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const lineCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -409,7 +411,9 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
       {guideRegions.length > 0 && (
         <>
           <div className="guide-note">
-            {settings.showLearningMap
+            {guideNeedsUpdate
+              ? 'You changed the light direction. Update the lighting guide to move the highlight and shadow areas.'
+              : settings.showLearningMap
               ? 'Learning map: gold = highlight, plum = form shadow, blue = cast shadow, indigo = deepest shadow.'
               : `${mediumConfig.label} preview · change medium, light type, or colours and the preview updates instantly.`}
           </div>
