@@ -6,6 +6,24 @@ export type ColoringMedium = 'colored-pencils' | 'markers' | 'watercolors' | 'di
 
 export type AnalysisProvider = 'openai' | 'gemini';
 
+export type ShadowPalette =
+  | 'auto'
+  | 'same-color'
+  | 'warm-gray'
+  | 'cool-gray'
+  | 'purple'
+  | 'blue'
+  | 'black'
+  | 'custom';
+
+export type HighlightPalette =
+  | 'auto'
+  | 'paper-white'
+  | 'same-color'
+  | 'warm'
+  | 'cool'
+  | 'custom';
+
 export interface LightSource {
   x: number; // 0 to 100 percentage across canvas width
   y: number; // 0 to 100 percentage across canvas height
@@ -34,6 +52,10 @@ export interface ShadingSettings {
   showGuideMarkers: boolean; // Show ⭐ Highlight & 🌙 Shadow helper badges on canvas
   showLightRays: boolean; // Show directional light rays
   coloringMedium: ColoringMedium;
+  shadowPalette: ShadowPalette;
+  highlightPalette: HighlightPalette;
+  highlightColor: string;
+  showLearningMap: boolean;
 }
 
 export interface ColorPalette {
