@@ -52,6 +52,7 @@ export default function App() {
   const [geminiAnalysis, setGeminiAnalysis] = useState<GeminiLightingAnalysis | null>(null);
   const [analysisProvider, setAnalysisProvider] = useState<AnalysisProvider>('openai');
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analyzedDirection, setAnalyzedDirection] = useState<{ x: number; y: number } | null>(null);
 
   // Modals
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
@@ -61,12 +62,14 @@ export default function App() {
     setSelectedSample(sample);
     setCustomImageDataUrl(undefined);
     setGeminiAnalysis(null);
+    setAnalyzedDirection(null);
   };
 
   // Handle Custom Image Upload or Camera Scan
   const handleCustomImage = (dataUrl: string) => {
     setCustomImageDataUrl(dataUrl);
     setGeminiAnalysis(null);
+    setAnalyzedDirection(null);
   };
 
   // Call the selected server-side vision provider for lighting analysis.
@@ -144,6 +147,7 @@ export default function App() {
       const json = await res.json();
       if (json.success && json.data) {
         setGeminiAnalysis(json.data);
+        setAnalyzedDirection({ x: light.x, y: light.y });
         console.info('Lighting analysis usage:', json.meta);
       } else {
         console.error('Lighting analysis failed:', json.error);
@@ -154,6 +158,12 @@ export default function App() {
       setIsAnalyzing(false);
     }
   };
+
+  const guideNeedsUpdate = Boolean(
+    geminiAnalysis &&
+    analyzedDirection &&
+    (Math.abs(light.x - analyzedDirection.x) > 0.5 || Math.abs(light.y - analyzedDirection.y) > 0.5)
+  );
 
   return (
     <div className="studio-app">
@@ -181,10 +191,8 @@ export default function App() {
                   light={light}
                   setLight={setLight}
                   settings={settings}
-                  activeTool="light-drag"
-                  paintColor="#E06D53"
-                  clearPaintTrigger={0}
                   guideRegions={geminiAnalysis?.regions || []}
+                  guideNeedsUpdate={guideNeedsUpdate}
                 />
               </div>
 
@@ -199,6 +207,7 @@ export default function App() {
                   analysisProvider={analysisProvider}
                   setAnalysisProvider={setAnalysisProvider}
                   isAnalyzing={isAnalyzing}
+                  guideNeedsUpdate={guideNeedsUpdate}
                 />
               </div>
             </div>
