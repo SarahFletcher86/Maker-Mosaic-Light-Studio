@@ -8,6 +8,7 @@ interface LightingCanvasProps {
   light: LightSource;
   setLight: React.Dispatch<React.SetStateAction<LightSource>>;
   settings: ShadingSettings;
+  setSettings: React.Dispatch<React.SetStateAction<ShadingSettings>>;
   guideRegions: LightingGuideRegion[];
   guideNeedsUpdate: boolean;
 }
@@ -46,6 +47,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   light,
   setLight,
   settings,
+  setSettings,
   guideRegions,
   guideNeedsUpdate,
 }) => {
@@ -59,6 +61,15 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
 
   const lightX = clamp(light.x, 6, 94);
   const lightY = clamp(light.y, 6, 94);
+
+  const previewSurfaces = {
+    white: { label: 'White', color: '#FFFFFF' },
+    'warm-paper': { label: 'Warm paper', color: '#EFE3D2' },
+    'cool-grey': { label: 'Cool grey', color: '#DCE4E8' },
+    dark: { label: 'Dark', color: '#4D535C' },
+  } as const;
+
+  const currentSurface = previewSurfaces[settings.previewSurface];
 
   const analyzeArtworkSurface = useCallback((ctx: CanvasRenderingContext2D) => {
     const image = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -164,7 +175,25 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
     setSubjectMaskUrl(enclosedRatio > 0.025 ? maskCanvas.toDataURL('image/png') : null);
 
     const chromaticRatio = chromaticPixels / Math.max(1, visiblePixels);
-    setIsBlankLineArt(chromaticRatio < 0.015);
+    const blankLineArt = chromaticRatio < 0.015;
+    setIsBlankLineArt(blankLineArt);
+
+    // For blank colouring pages only, make near-white paper transparent in the
+    // display canvas so an optional preview surface can show through. The export
+    // still gets a white paper background.
+    if (blankLineArt) {
+      for (let i = 0; i < total; i++) {
+        const p = i * 4;
+        const r = image.data[p];
+        const g = image.data[p + 1];
+        const b = image.data[p + 2];
+        if (r > 243 && g > 243 && b > 243) {
+          image.data[p + 3] = 0;
+        }
+      }
+      ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+      ctx.putImageData(image, 0, 0);
+    }
   }, []);
 
   const loadArtwork = useCallback(() => {
@@ -288,6 +317,8 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
     canvas.height = CANVAS_SIZE;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
     ctx.drawImage(source, 0, 0);
 
     guideRegions.forEach((region) => {
@@ -371,13 +402,21 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
     const isDeep = region.kind === 'deep-shadow';
     const isCast = region.kind === 'cast-shadow';
     const baseOpacity = isHighlight ? mediumConfig.highlightBase : mediumConfig.shadowBase;
+    const highlightBoost =
+      isHighlight && settings.boostHighlightVisibility
+        ? (isBlankLineArt ? 1.55 : 1.25)
+        : 1;
+
     return {
       fill: isHighlight ? resolved.highlight : resolved.shadow,
       stroke: 'none',
       opacity: clamp(
-        baseOpacity * (.65 + region.strength * .65) * (isDeep ? 1.25 : isCast ? 1.1 : 1),
+        baseOpacity *
+          (.65 + region.strength * .65) *
+          (isDeep ? 1.25 : isCast ? 1.1 : 1) *
+          highlightBoost,
         .08,
-        .55,
+        .62,
       ),
       filter: mediumConfig.filter,
       blendMode:
@@ -421,7 +460,10 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         ref={containerRef}
         className="art-stage"
         onPointerDown={handlePointerDown}
-        style={{ cursor: showLightPuck ? 'crosshair' : 'default' }}
+        style={{
+          cursor: showLightPuck ? 'crosshair' : 'default',
+          background: currentSurface.color,
+        }}
       >
         <canvas
           ref={lineCanvasRef}
@@ -505,7 +547,11 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
                     <path
                       d={path}
                       fill={resolved.highlight}
-                      fillOpacity={clamp(appearance.opacity * .55, .09, .18)}
+                      fillOpacity={clamp(
+                        appearance.opacity * (settings.boostHighlightVisibility ? .9 : .55),
+                        .09,
+                        settings.boostHighlightVisibility ? .28 : .18
+                      )}
                       filter="url(#highlightBloom)"
                       style={{ mixBlendMode: 'normal' }}
                     />
@@ -602,6 +648,57 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
               <span><i className="legend-dot" style={{ background: '#59617F' }} />Deep shadow</span>
             </div>
           )}
+
+          <div className="preview-surface-panel">
+            <div className="preview-surface-header">
+              <div>
+                <p className="preview-surface-title">Preview surface</p>
+                <p className="preview-surface-copy">
+                  For visibility only — does not change your artwork or download.
+                </p>
+              </div>
+            </div>
+
+            <div className="preview-surface-chips">
+              {Object.entries(previewSurfaces).map(([value, option]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`surface-chip ${settings.previewSurface === value ? 'selected' : ''}`}
+                  onClick={() =>
+                    setSettings(prev => ({
+                      ...prev,
+                      previewSurface: value as ShadingSettings['previewSurface'],
+                    }))
+                  }
+                >
+                  <span
+                    className="surface-swatch"
+                    style={{ background: option.color }}
+                    aria-hidden="true"
+                  />
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <label className="preview-toggle">
+              <input
+                type="checkbox"
+                checked={settings.boostHighlightVisibility}
+                onChange={(event) =>
+                  setSettings(prev => ({
+                    ...prev,
+                    boostHighlightVisibility: event.target.checked,
+                  }))
+                }
+              />
+              <span>
+                <strong>Boost highlight visibility</strong>
+                <small>Helpful when planning on an uncoloured page.</small>
+              </span>
+            </label>
+          </div>
 
           <div className="comparison-slider">
             <span>Original</span>
