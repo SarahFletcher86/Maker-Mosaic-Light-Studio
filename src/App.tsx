@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { SAMPLE_DRAWINGS } from './data/samples';
-import { SampleDrawing, LightSource, ShadingSettings, ActiveTool, GeminiLightingAnalysis } from './types';
+import { SampleDrawing, LightSource, ShadingSettings, ActiveTool, GeminiLightingAnalysis, AnalysisProvider } from './types';
 import { Header } from './components/Header';
 import { SamplePicker } from './components/SamplePicker';
 import { LightingCanvas } from './components/LightingCanvas';
@@ -52,8 +52,9 @@ export default function App() {
   const [paintColor, setPaintColor] = useState<string>('#E06D53');
   const [clearPaintTrigger, setClearPaintTrigger] = useState<number>(0);
 
-  // Gemini AI Analysis State
+  // AI lighting analysis state. OpenAI is the default candidate; Gemini remains available for A/B testing.
   const [geminiAnalysis, setGeminiAnalysis] = useState<GeminiLightingAnalysis | null>(null);
+  const [analysisProvider, setAnalysisProvider] = useState<AnalysisProvider>('openai');
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
   // Modals
@@ -74,12 +75,12 @@ export default function App() {
     setActiveTab('studio');
   };
 
-  // Call Gemini AI API for Lighting Analysis
-  const handleAskGeminiAI = async () => {
+  // Call the selected server-side vision provider for lighting analysis.
+  const handleCreateLightingGuide = async () => {
     setIsAnalyzing(true);
     try {
       // Normalize the exact displayed artwork to a 600x600 PNG before analysis.
-      // This keeps Gemini's 0..100 guide coordinates aligned with the UI canvas,
+      // This keeps the model's 0..100 guide coordinates aligned with the UI canvas,
       // including portrait/landscape uploads that are letterboxed to fit.
       const base64 = await new Promise<string>((resolve) => {
         const img = new Image();
@@ -130,11 +131,11 @@ export default function App() {
       });
 
       if (!base64) {
-        console.error('No valid image data for Gemini AI analysis');
+        console.error('No valid image data for lighting analysis');
         return;
       }
 
-      const res = await fetch('/api/gemini/analyze-lighting', {
+      const res = await fetch('/api/lighting/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -142,14 +143,16 @@ export default function App() {
           lightSource: light,
           coloringMedium: settings.coloringMedium,
           mimeType: 'image/png',
+          provider: analysisProvider,
         }),
       });
 
       const json = await res.json();
       if (json.success && json.data) {
         setGeminiAnalysis(json.data);
+        console.info('Lighting analysis usage:', json.meta);
       } else {
-        console.error('Gemini analysis failed:', json.error);
+        console.error('Lighting analysis failed:', json.error);
       }
     } catch (err) {
       console.error('API call error:', err);
@@ -227,7 +230,9 @@ export default function App() {
                   paintColor={paintColor}
                   setPaintColor={setPaintColor}
                   onClearPaint={() => setClearPaintTrigger((prev) => prev + 1)}
-                  onAskGeminiAI={handleAskGeminiAI}
+                  onCreateLightingGuide={handleCreateLightingGuide}
+                  analysisProvider={analysisProvider}
+                  setAnalysisProvider={setAnalysisProvider}
                   isAnalyzing={isAnalyzing}
                 />
               </div>
@@ -238,7 +243,7 @@ export default function App() {
               analysis={geminiAnalysis}
               isAnalyzing={isAnalyzing}
               onApplyPalette={handleApplyPalette}
-              onAskGeminiAI={handleAskGeminiAI}
+              onAskGeminiAI={handleCreateLightingGuide}
             />
           </>
         )}
