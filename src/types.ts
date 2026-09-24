@@ -4,6 +4,8 @@ export type LightType = 'point' | 'directional' | 'spotlight';
 
 export type ColoringMedium = 'colored-pencils' | 'markers' | 'watercolors' | 'digital';
 
+export type AnalysisProvider = 'openai' | 'gemini';
+
 export interface LightSource {
   x: number; // 0 to 100 percentage across canvas width
   y: number; // 0 to 100 percentage across canvas height
@@ -56,7 +58,7 @@ export interface LightingGuideRegion {
   points: GuidePoint[];
 }
 
-export interface GeminiLightingAnalysis {
+export interface LightingAnalysis {
   title: string;
   summary: string;
   highlightsGuide: string;
@@ -66,6 +68,9 @@ export interface GeminiLightingAnalysis {
   palette: ColorPalette;
   regions: LightingGuideRegion[];
 }
+
+// Backward-compatible alias while the prototype component names are cleaned up.
+export type GeminiLightingAnalysis = LightingAnalysis;
 
 export interface SampleDrawing {
   id: string;
