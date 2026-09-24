@@ -48,6 +48,7 @@ export default function App() {
     showLearningMap: false,
     previewSurface: 'white',
     boostHighlightVisibility: true,
+    showGuideOutlines: true,
   });
 
   // AI lighting analysis state. OpenAI is the default candidate; Gemini remains available for A/B testing.
