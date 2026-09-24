@@ -95,6 +95,14 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
     loadLineArt();
   }, [loadLineArt]);
 
+  // When a semantic AI guide arrives, show it over the clean original artwork
+  // instead of stacking it on top of the local pseudo-3D preview.
+  useEffect(() => {
+    if (guideRegions.length > 0) {
+      setSplitPosition(0);
+    }
+  }, [guideRegions]);
+
   // Clear paint base canvas when clear trigger updates
   useEffect(() => {
     const baseCanvas = basePaintCanvasRef.current;
@@ -409,6 +417,12 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
       </div>
 
       {guideRegions.length > 0 && (
+        <div className="w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-200">
+          AI guide is shown over your original artwork. Use the slider below only if you want to compare it with the instant local preview.
+        </div>
+      )}
+
+      {guideRegions.length > 0 && (
         <div className="w-full flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
           <span className="font-bold text-amber-300">AI guide</span>
           <span><span className="text-amber-300">●</span> Highlight</span>
@@ -429,7 +443,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
           onChange={(e) => setSplitPosition(Number(e.target.value))}
           className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
         />
-        <span className="text-amber-400 font-bold whitespace-nowrap">Shaded ({splitPosition}%)</span>
+        <span className="text-amber-400 font-bold whitespace-nowrap">Instant Preview ({splitPosition}%)</span>
       </div>
     </div>
   );
