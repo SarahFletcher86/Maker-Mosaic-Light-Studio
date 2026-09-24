@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { LightSource, ShadingSettings, ActiveTool, LightingGuideRegion } from '../types';
 import { processLineArtSurface, renderLightingOverlay, floodFill, CanvasShadingContext } from '../utils/normalMap';
-import { Sun, Moon, Download, Eye, ChevronDown } from 'lucide-react';
+import { Sun, Moon, Download, Eye } from 'lucide-react';
 
 interface LightingCanvasProps {
   svgString?: string;
@@ -34,7 +34,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   const [shadingCtx, setShadingCtx] = useState<CanvasShadingContext | null>(null);
   const [isDraggingLight, setIsDraggingLight] = useState(false);
   const [isDraggingShadow, setIsDraggingShadow] = useState(false);
-  const [splitPosition, setSplitPosition] = useState<number>(0);
+  const [guideReveal, setGuideReveal] = useState<number>(0);
   const [showLightPuck, setShowLightPuck] = useState(false);
 
   const CANVAS_SIZE = 600;
@@ -98,9 +98,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   // When a semantic AI guide arrives, show it over the clean original artwork
   // instead of stacking it on top of the local pseudo-3D preview.
   useEffect(() => {
-    if (guideRegions.length > 0) {
-      setSplitPosition(0);
-    }
+    setGuideReveal(guideRegions.length > 0 ? 100 : 0);
   }, [guideRegions]);
 
   // Clear paint base canvas when clear trigger updates
@@ -287,18 +285,14 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
           className="absolute inset-0 w-full h-full object-contain pointer-events-none mix-blend-multiply"
         />
 
-        {/* Layer 3: Shading Overlay Canvas (Clipped by split view slider) */}
-        <div
-          className="absolute inset-0 overflow-hidden pointer-events-none"
-          style={{ width: `${splitPosition}%` }}
-        >
-          <canvas
-            ref={shadingCanvasRef}
-            width={CANVAS_SIZE}
-            height={CANVAS_SIZE}
-            className="absolute inset-0 w-full h-full object-contain"
-          />
-        </div>
+        {/* Local instant renderer is retained for internal experimentation only. */}
+        <canvas
+          ref={shadingCanvasRef}
+          width={CANVAS_SIZE}
+          height={CANVAS_SIZE}
+          className="hidden"
+          aria-hidden="true"
+        />
 
         {/* AI semantic guide regions drawn over the ORIGINAL artwork.
             These come from Gemini's understanding of object form/overlap rather than
@@ -309,6 +303,7 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
             aria-label="AI highlight and shadow guide overlay"
+            style={{ clipPath: `inset(0 ${100 - guideReveal}% 0 0)` }}
           >
             {guideRegions.map((region, index) => {
               const colors = {
@@ -446,11 +441,11 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
           </div>
         )}
 
-        {/* Comparison Split Line & Handle */}
-        {splitPosition > 0 && splitPosition < 100 && (
+        {/* Original / AI guide comparison divider */}
+        {guideRegions.length > 0 && guideReveal > 0 && guideReveal < 100 && (
           <div
-            className="absolute top-0 bottom-0 z-10 w-0.5 bg-amber-400 shadow-md pointer-events-none"
-            style={{ left: `${splitPosition}%` }}
+            className="absolute top-0 bottom-0 z-20 w-0.5 bg-amber-400 shadow-md pointer-events-none"
+            style={{ left: `${guideReveal}%` }}
           >
             <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center shadow-lg">
               ↔
@@ -475,24 +470,21 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
         </div>
       )}
 
-      <details className="group w-full border-t border-slate-800 pt-2">
-        <summary className="list-none cursor-pointer flex items-center justify-between text-[11px] font-semibold text-slate-500 hover:text-slate-300">
-          <span>Compare with instant preview</span>
-          <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="mt-2 flex items-center space-x-3 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-xs">
+      {guideRegions.length > 0 && (
+        <div className="w-full flex items-center space-x-3 bg-slate-950/80 p-3 rounded-xl border border-slate-800 text-xs">
           <span className="text-slate-400 font-medium whitespace-nowrap">Original</span>
           <input
             type="range"
             min="0"
             max="100"
-            value={splitPosition}
-            onChange={(e) => setSplitPosition(Number(e.target.value))}
+            value={guideReveal}
+            onChange={(e) => setGuideReveal(Number(e.target.value))}
             className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+            aria-label="Compare original artwork with lighting guide"
           />
-          <span className="text-amber-400 font-bold whitespace-nowrap">Preview {splitPosition}%</span>
+          <span className="text-amber-400 font-bold whitespace-nowrap">Guide</span>
         </div>
-      </details>
+      )}
     </div>
   );
 };
