@@ -1,0 +1,10 @@
+{
+  "name": "Coloring Page Light Guide",
+  "description": "Interactive light and shadow guide app for coloring book lovers. Drag light sources and see where to place highlights, midtones, and shadows on coloring pages.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
