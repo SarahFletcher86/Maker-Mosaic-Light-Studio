@@ -90,6 +90,9 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
     light.color.toUpperCase() === '#9ED8FF' ? 'Moonlight' :
     light.type === 'point' ? 'Warm lamp' : 'Daylight';
 
+  const currentLightDefaults =
+    lightTypes.find(source => source.label === currentLightType) || lightTypes[0];
+
   const shadows: { id: ShadowPalette; label: string; swatch?: string }[] = [
     { id: 'auto', label: 'Auto' },
     { id: 'same-color', label: 'Layer base colour' },
@@ -207,6 +210,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                     ...prev,
                     shadowPalette: option.id,
                     shadowColor:
+                      option.id === 'auto' ? currentLightDefaults.shadow :
                       option.id === 'cool-gray' ? '#667085' :
                       option.id === 'warm-gray' ? '#81746E' :
                       option.id === 'purple' ? '#65507D' :
@@ -246,6 +250,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
                     ...prev,
                     highlightPalette: option.id,
                     highlightColor:
+                      option.id === 'auto' ? currentLightDefaults.highlight :
                       option.id === 'paper-white' ? '#FFFDF8' :
                       option.id === 'warm' ? '#FFE2A8' :
                       option.id === 'cool' ? '#DDF2FF' :
