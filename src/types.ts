@@ -4,6 +4,28 @@ export type LightType = 'point' | 'directional' | 'spotlight';
 
 export type ColoringMedium = 'colored-pencils' | 'markers' | 'watercolors' | 'digital';
 
+export type AnalysisProvider = 'openai' | 'gemini';
+
+export type PreviewSurface = 'white' | 'warm-paper' | 'cool-grey' | 'dark';
+
+export type ShadowPalette =
+  | 'auto'
+  | 'same-color'
+  | 'warm-gray'
+  | 'cool-gray'
+  | 'purple'
+  | 'blue'
+  | 'black'
+  | 'custom';
+
+export type HighlightPalette =
+  | 'auto'
+  | 'paper-white'
+  | 'same-color'
+  | 'warm'
+  | 'cool'
+  | 'custom';
+
 export interface LightSource {
   x: number; // 0 to 100 percentage across canvas width
   y: number; // 0 to 100 percentage across canvas height
@@ -32,6 +54,13 @@ export interface ShadingSettings {
   showGuideMarkers: boolean; // Show ⭐ Highlight & 🌙 Shadow helper badges on canvas
   showLightRays: boolean; // Show directional light rays
   coloringMedium: ColoringMedium;
+  shadowPalette: ShadowPalette;
+  highlightPalette: HighlightPalette;
+  highlightColor: string;
+  showLearningMap: boolean;
+  previewSurface: PreviewSurface;
+  boostHighlightVisibility: boolean;
+  showGuideOutlines: boolean;
 }
 
 export interface ColorPalette {
@@ -41,7 +70,22 @@ export interface ColorPalette {
   rimLight: string;
 }
 
-export interface GeminiLightingAnalysis {
+export type LightingRegionKind = 'highlight' | 'form-shadow' | 'cast-shadow' | 'deep-shadow';
+
+export interface GuidePoint {
+  x: number; // 0..100 normalized image/canvas coordinate
+  y: number; // 0..100 normalized image/canvas coordinate
+}
+
+export interface LightingGuideRegion {
+  kind: LightingRegionKind;
+  label: string;
+  explanation: string;
+  strength: number; // 0..1 suggested intensity
+  points: GuidePoint[];
+}
+
+export interface LightingAnalysis {
   title: string;
   summary: string;
   highlightsGuide: string;
@@ -49,7 +93,11 @@ export interface GeminiLightingAnalysis {
   colorTheoryTip: string;
   stepByStepGuide: string[];
   palette: ColorPalette;
+  regions: LightingGuideRegion[];
 }
+
+// Backward-compatible alias while the prototype component names are cleaned up.
+export type GeminiLightingAnalysis = LightingAnalysis;
 
 export interface SampleDrawing {
   id: string;

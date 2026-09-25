@@ -1,29 +1,26 @@
 import React, { useState } from 'react';
 import { SAMPLE_DRAWINGS } from './data/samples';
-import { SampleDrawing, LightSource, ShadingSettings, ActiveTool, GeminiLightingAnalysis } from './types';
+import { SampleDrawing, LightSource, ShadingSettings, GeminiLightingAnalysis, AnalysisProvider } from './types';
 import { Header } from './components/Header';
 import { SamplePicker } from './components/SamplePicker';
 import { LightingCanvas } from './components/LightingCanvas';
 import { ControlsPanel } from './components/ControlsPanel';
 import { GeminiLightGuide } from './components/GeminiLightGuide';
-import { TechExplainerModal } from './components/TechExplainerModal';
-import { Scratchpad } from './components/Scratchpad';
 import { CameraScanModal } from './components/CameraScanModal';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'studio' | 'draw'>('studio');
   const [selectedSample, setSelectedSample] = useState<SampleDrawing>(SAMPLE_DRAWINGS[0]);
   const [customImageDataUrl, setCustomImageDataUrl] = useState<string | undefined>(undefined);
 
   // Light Source State
   const [light, setLight] = useState<LightSource>({
-    x: 65,
-    y: 25,
-    z: 60,
-    color: '#FFF2C6',
+    x: 25,
+    y: 20,
+    z: 70,
+    color: '#FFF4D6',
     intensity: 0.95,
     radius: 220,
-    type: 'point',
+    type: 'directional',
     softness: 8,
   });
 
@@ -42,22 +39,25 @@ export default function App() {
     specularShininess: 32,
     lineThreshold: 180,
     invertLines: false,
-    showGuideMarkers: true,
-    showLightRays: true,
+    showGuideMarkers: false,
+    showLightRays: false,
     coloringMedium: 'colored-pencils',
+    shadowPalette: 'auto',
+    highlightPalette: 'auto',
+    highlightColor: '#FFF2C7',
+    showLearningMap: false,
+    previewSurface: 'white',
+    boostHighlightVisibility: true,
+    showGuideOutlines: true,
   });
 
-  // Active Tool & Color Bucket
-  const [activeTool, setActiveTool] = useState<ActiveTool>('light-drag');
-  const [paintColor, setPaintColor] = useState<string>('#E06D53');
-  const [clearPaintTrigger, setClearPaintTrigger] = useState<number>(0);
-
-  // Gemini AI Analysis State
+  // AI lighting analysis state. OpenAI is the default candidate; Gemini remains available for A/B testing.
   const [geminiAnalysis, setGeminiAnalysis] = useState<GeminiLightingAnalysis | null>(null);
+  const [analysisProvider, setAnalysisProvider] = useState<AnalysisProvider>('openai');
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analyzedDirection, setAnalyzedDirection] = useState<{ x: number; y: number } | null>(null);
 
   // Modals
-  const [isTechExplainerOpen, setIsTechExplainerOpen] = useState<boolean>(false);
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
 
   // Handle Preset Line Art Selection
@@ -65,68 +65,95 @@ export default function App() {
     setSelectedSample(sample);
     setCustomImageDataUrl(undefined);
     setGeminiAnalysis(null);
+    setAnalyzedDirection(null);
   };
 
   // Handle Custom Image Upload or Camera Scan
   const handleCustomImage = (dataUrl: string) => {
     setCustomImageDataUrl(dataUrl);
     setGeminiAnalysis(null);
-    setActiveTab('studio');
+    setAnalyzedDirection(null);
   };
 
-  // Call Gemini AI API for Lighting Analysis
-  const handleAskGeminiAI = async () => {
+  // Call the selected server-side vision provider for lighting analysis.
+  const handleCreateLightingGuide = async () => {
     setIsAnalyzing(true);
     try {
-      // Get base64 PNG string
-      let base64 = customImageDataUrl;
-      if (!base64 && selectedSample) {
-        // Render SVG to HTMLImageElement -> Canvas -> PNG Data URL
-        base64 = await new Promise<string>((resolve) => {
-          const img = new Image();
-          const svgBlob = new Blob([selectedSample.svgString], { type: 'image/svg+xml;charset=utf-8' });
-          const url = URL.createObjectURL(svgBlob);
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = 600;
-            canvas.height = 600;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = '#FFFFFF';
-              ctx.fillRect(0, 0, 600, 600);
-              ctx.drawImage(img, 0, 0, 600, 600);
-            }
-            URL.revokeObjectURL(url);
-            resolve(canvas.toDataURL('image/png'));
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(url);
+      // Normalize the exact displayed artwork to a 600x600 PNG before analysis.
+      // This keeps the model's 0..100 guide coordinates aligned with the UI canvas,
+      // including portrait/landscape uploads that are letterboxed to fit.
+      const base64 = await new Promise<string>((resolve) => {
+        const img = new Image();
+        let objectUrl: string | null = null;
+
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 600;
+          canvas.height = 600;
+          const ctx = canvas.getContext('2d');
+
+          if (!ctx) {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
             resolve('');
-          };
-          img.src = url;
-        });
-      }
+            return;
+          }
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, 600, 600);
+
+          const scale = Math.min(600 / img.width, 600 / img.height);
+          const width = img.width * scale;
+          const height = img.height * scale;
+          const x = (600 - width) / 2;
+          const y = (600 - height) / 2;
+          ctx.drawImage(img, x, y, width, height);
+
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve(canvas.toDataURL('image/png'));
+        };
+
+        img.onerror = () => {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve('');
+        };
+
+        if (customImageDataUrl) {
+          img.src = customImageDataUrl;
+        } else if (selectedSample) {
+          const svgBlob = new Blob([selectedSample.svgString], {
+            type: 'image/svg+xml;charset=utf-8',
+          });
+          objectUrl = URL.createObjectURL(svgBlob);
+          img.src = objectUrl;
+        } else {
+          resolve('');
+        }
+      });
 
       if (!base64) {
-        console.error('No valid image data for Gemini AI analysis');
+        console.error('No valid image data for lighting analysis');
         return;
       }
 
-      const res = await fetch('/api/gemini/analyze-lighting', {
+      const res = await fetch('/api/lighting/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageBase64: base64,
           lightSource: light,
+          coloringMedium: settings.coloringMedium,
           mimeType: 'image/png',
+          provider: analysisProvider,
         }),
       });
 
       const json = await res.json();
       if (json.success && json.data) {
         setGeminiAnalysis(json.data);
+        setAnalyzedDirection({ x: light.x, y: light.y });
+        console.info('Lighting analysis usage:', json.meta);
       } else {
-        console.error('Gemini analysis failed:', json.error);
+        console.error('Lighting analysis failed:', json.error);
       }
     } catch (err) {
       console.error('API call error:', err);
@@ -135,76 +162,56 @@ export default function App() {
     }
   };
 
-  // Apply Gemini Recommended Palette Swatches to Canvas Shader
-  const handleApplyPalette = (palette: GeminiLightingAnalysis['palette']) => {
-    setLight((prev) => ({ ...prev, color: palette.highlight }));
-    setSettings((prev) => ({
-      ...prev,
-      shadowColor: palette.shadow,
-      rimLightColor: palette.rimLight,
-    }));
-    setPaintColor(palette.base);
-  };
+  const guideNeedsUpdate = Boolean(
+    geminiAnalysis &&
+    analyzedDirection &&
+    (Math.abs(light.x - analyzedDirection.x) > 0.5 || Math.abs(light.y - analyzedDirection.y) > 0.5)
+  );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+    <div className="studio-app">
       {/* Top Navigation Header */}
-      <Header
-        onOpenTechExplainer={() => setIsTechExplainerOpen(true)}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
+      <Header />
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {activeTab === 'draw' ? (
-          /* Scratchpad Draw Mode */
-          <Scratchpad
-            onApplyDrawing={(dataUrl) => handleCustomImage(dataUrl)}
-            onCancel={() => setActiveTab('studio')}
-          />
-        ) : (
-          /* Studio Mode */
-          <>
+      <main className="studio-main">
+        <>
             {/* Top Row: Sample Picker */}
             <SamplePicker
               selectedSampleId={customImageDataUrl ? 'custom' : selectedSample.id}
               onSelectSample={handleSelectSample}
               onCustomImageUpload={handleCustomImage}
               onOpenCamera={() => setIsCameraOpen(true)}
-              onOpenScratchpad={() => setActiveTab('draw')}
             />
 
             {/* Middle Row: Canvas Stage + Controls Panel */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="studio-workspace-grid">
               {/* Left Column: Interactive Canvas Stage (7 cols) */}
-              <div className="lg:col-span-7 space-y-6">
+              <div className="studio-canvas-column">
                 <LightingCanvas
                   svgString={selectedSample?.svgString}
                   customImageDataUrl={customImageDataUrl}
                   light={light}
                   setLight={setLight}
                   settings={settings}
-                  activeTool={activeTool}
-                  paintColor={paintColor}
-                  clearPaintTrigger={clearPaintTrigger}
+                  setSettings={setSettings}
+                  guideRegions={geminiAnalysis?.regions || []}
+                  guideNeedsUpdate={guideNeedsUpdate}
                 />
               </div>
 
               {/* Right Column: Light & Shader Controls (5 cols) */}
-              <div className="lg:col-span-5 space-y-6">
+              <div className="studio-controls-column">
                 <ControlsPanel
                   light={light}
                   setLight={setLight}
                   settings={settings}
                   setSettings={setSettings}
-                  activeTool={activeTool}
-                  setActiveTool={setActiveTool}
-                  paintColor={paintColor}
-                  setPaintColor={setPaintColor}
-                  onClearPaint={() => setClearPaintTrigger((prev) => prev + 1)}
-                  onAskGeminiAI={handleAskGeminiAI}
+                  onCreateLightingGuide={handleCreateLightingGuide}
+                  analysisProvider={analysisProvider}
+                  setAnalysisProvider={setAnalysisProvider}
                   isAnalyzing={isAnalyzing}
+                  guideNeedsUpdate={guideNeedsUpdate}
                 />
               </div>
             </div>
@@ -213,18 +220,11 @@ export default function App() {
             <GeminiLightGuide
               analysis={geminiAnalysis}
               isAnalyzing={isAnalyzing}
-              onApplyPalette={handleApplyPalette}
-              onAskGeminiAI={handleAskGeminiAI}
+              onAskGeminiAI={handleCreateLightingGuide}
+              coloringMedium={settings.coloringMedium}
             />
-          </>
-        )}
+        </>
       </main>
-
-      {/* Modals */}
-      <TechExplainerModal
-        isOpen={isTechExplainerOpen}
-        onClose={() => setIsTechExplainerOpen(false)}
-      />
 
       <CameraScanModal
         isOpen={isCameraOpen}

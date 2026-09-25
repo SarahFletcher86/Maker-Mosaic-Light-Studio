@@ -1,177 +1,93 @@
 import React from 'react';
-import { GeminiLightingAnalysis } from '../types';
-import { Sparkles, Sun, Moon, Palette, CheckCircle, HelpCircle, Layers, ArrowRight } from 'lucide-react';
+import { ColoringMedium, GeminiLightingAnalysis } from '../types';
+import { Sparkles, Sun, Moon, Palette, ChevronDown } from 'lucide-react';
 
 interface GeminiLightGuideProps {
   analysis: GeminiLightingAnalysis | null;
   isAnalyzing: boolean;
-  onApplyPalette: (palette: GeminiLightingAnalysis['palette']) => void;
   onAskGeminiAI: () => void;
+  coloringMedium: ColoringMedium;
 }
 
 export const GeminiLightGuide: React.FC<GeminiLightGuideProps> = ({
   analysis,
   isAnalyzing,
-  onApplyPalette,
-  onAskGeminiAI
+  onAskGeminiAI,
+  coloringMedium,
 }) => {
+  const mediumTip =
+    coloringMedium === 'markers'
+      ? 'Use translucent passes and let each layer dry before deepening the shadow. Same-colour layering, greys, violet, or a custom shadow colour all work.'
+      : coloringMedium === 'watercolors'
+        ? 'Build the shadow with transparent washes and let the edge soften as it turns across rounded forms. Keep highlights lighter by preserving paper or lifting colour.'
+        : coloringMedium === 'digital'
+          ? 'Use a soft clipped layer for form shadows and a firmer edge for cast shadows. Lower opacity first, then build contrast where forms overlap.'
+          : 'Build shadows gradually with light pressure and overlapping strokes. Feather the edge on rounded forms and reserve your brightest paper or pencil for highlights.';
   if (isAnalyzing) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl text-center space-y-4">
-        <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center animate-spin">
-          <Sparkles className="w-6 h-6" />
+      <section className="studio-card result-card">
+        <div style={{ textAlign: 'center', padding: '8px 0' }}>
+          <Sparkles size={22} color="var(--brass)" className="spin" />
+          <h3 className="result-title" style={{ marginTop: 10 }}>Creating your lighting guide…</h3>
+          <p className="result-summary">Finding the surfaces that face toward and away from your chosen light.</p>
         </div>
-        <div>
-          <h3 className="text-base font-bold text-white">Gemini AI Analyzing Light & Forms...</h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Analyzing 3D geometry, plane normals, core shadows, and highlight zones for your line art
-          </p>
-        </div>
-      </div>
+      </section>
     );
   }
 
-  if (!analysis) {
-    return (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl text-center space-y-3">
-        <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
-          <Sparkles className="w-5 h-5" />
-        </div>
-        <div>
-          <h3 className="text-sm font-bold text-white">Gemini AI Light Master Guide</h3>
-          <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-            Click "Ask Gemini AI" anytime to analyze where highlights, core shadows, and ambient bounce light fall on your line art!
-          </p>
-        </div>
-        <button
-          onClick={onAskGeminiAI}
-          className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-md hover:shadow-amber-500/20 transition-all inline-flex items-center space-x-1.5"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Analyze Lighting with Gemini AI</span>
-        </button>
-      </div>
-    );
-  }
+  if (!analysis) return null;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl text-slate-200 space-y-5">
-      {/* Title & Banner */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-        <div className="flex items-center space-x-2.5">
-          <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-white">{analysis.title}</h3>
-            <p className="text-[11px] text-slate-400">{analysis.summary}</p>
-          </div>
-        </div>
+    <section className="studio-card result-card">
+      <span className="step-kicker">Your guide</span>
+      <h3 className="result-title">{analysis.title}</h3>
+      <p className="result-summary">{analysis.summary}</p>
 
-        <button
-          onClick={() => onApplyPalette(analysis.palette)}
-          className="flex items-center space-x-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-        >
-          <Palette className="w-3.5 h-3.5" />
-          <span>Apply AI Swatches</span>
-        </button>
+      <div className="result-grid">
+        <article className="result-tip">
+          <h4><Sun size={15} color="var(--brass)" /> Add light here</h4>
+          <p>{analysis.highlightsGuide}</p>
+        </article>
+        <article className="result-tip">
+          <h4><Moon size={15} color="var(--plum)" /> Add shadow here</h4>
+          <p>{analysis.shadowsGuide}</p>
+        </article>
+        <article className="result-tip">
+          <h4><Palette size={15} color="var(--blue)" /> For your medium</h4>
+          <p>{mediumTip}</p>
+        </article>
       </div>
 
-      {/* Recommended 4-Tone Color Palette */}
-      <div className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-xl space-y-2">
-        <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-          <span className="flex items-center space-x-1.5">
-            <Palette className="w-3.5 h-3.5 text-amber-400" />
-            <span>AI Recommended 4-Tone Lighting Palette</span>
-          </span>
-          <span className="text-[10px] text-slate-400">Click swatch to copy hex</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {/* Base Tone */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 flex items-center space-x-2">
-            <div className="w-6 h-6 rounded border border-white/20" style={{ backgroundColor: analysis.palette.base }} />
-            <div>
-              <p className="text-[10px] text-slate-400 uppercase font-mono">Base Tone</p>
-              <p className="text-xs font-bold text-white font-mono">{analysis.palette.base}</p>
-            </div>
-          </div>
-
-          {/* Highlight Tone */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 flex items-center space-x-2">
-            <div className="w-6 h-6 rounded border border-white/20" style={{ backgroundColor: analysis.palette.highlight }} />
-            <div>
-              <p className="text-[10px] text-slate-400 uppercase font-mono">Highlight</p>
-              <p className="text-xs font-bold text-white font-mono">{analysis.palette.highlight}</p>
-            </div>
-          </div>
-
-          {/* Shadow Tone */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 flex items-center space-x-2">
-            <div className="w-6 h-6 rounded border border-white/20" style={{ backgroundColor: analysis.palette.shadow }} />
-            <div>
-              <p className="text-[10px] text-slate-400 uppercase font-mono">Core Shadow</p>
-              <p className="text-xs font-bold text-white font-mono">{analysis.palette.shadow}</p>
-            </div>
-          </div>
-
-          {/* Rim Light Tone */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 flex items-center space-x-2">
-            <div className="w-6 h-6 rounded border border-white/20" style={{ backgroundColor: analysis.palette.rimLight }} />
-            <div>
-              <p className="text-[10px] text-slate-400 uppercase font-mono">Rim Bounce</p>
-              <p className="text-xs font-bold text-white font-mono">{analysis.palette.rimLight}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Shading Guide Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {/* Highlights Guide */}
-        <div className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl space-y-1">
-          <h4 className="text-xs font-bold text-amber-300 flex items-center space-x-1.5">
-            <Sun className="w-3.5 h-3.5 text-amber-400" />
-            <span>Highlights & Catchlights</span>
-          </h4>
-          <p className="text-xs text-slate-300 leading-normal">{analysis.highlightsGuide}</p>
-        </div>
-
-        {/* Shadows Guide */}
-        <div className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl space-y-1">
-          <h4 className="text-xs font-bold text-indigo-300 flex items-center space-x-1.5">
-            <Moon className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Core Shadows & Creases</span>
-          </h4>
-          <p className="text-xs text-slate-300 leading-normal">{analysis.shadowsGuide}</p>
-        </div>
-
-        {/* Color Theory Tip */}
-        <div className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl space-y-1">
-          <h4 className="text-xs font-bold text-orange-300 flex items-center space-x-1.5">
-            <Palette className="w-3.5 h-3.5 text-orange-400" />
-            <span>Warm vs Cool Color Shift</span>
-          </h4>
-          <p className="text-xs text-slate-300 leading-normal">{analysis.colorTheoryTip}</p>
-        </div>
-      </div>
-
-      {/* Step-by-Step Rendering Sequence */}
-      <div className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-xl space-y-2">
-        <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
-          <Layers className="w-3.5 h-3.5 text-amber-400" />
-          <span>Recommended 4-Step Rendering Workflow</span>
-        </h4>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="steps-card">
+        <h4>A simple order to follow</h4>
+        <ol className="steps-list">
           {analysis.stepByStepGuide.map((step, idx) => (
-            <div key={idx} className="bg-slate-900 border border-slate-800/80 p-2.5 rounded-lg text-xs space-y-1">
-              <span className="font-mono text-[10px] text-amber-400 font-extrabold uppercase">Step 0{idx + 1}</span>
-              <p className="text-slate-300 leading-tight">{step}</p>
-            </div>
+            <li key={idx}>
+              <span className="step-number">{idx + 1}</span>
+              <span>{step}</span>
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
-    </div>
+
+      {analysis.regions?.length > 0 && (
+        <details className="result-details">
+          <summary>
+            <span>Why are those areas marked?</span>
+            <ChevronDown size={15} className="summary-chevron" />
+          </summary>
+          <div className="region-explanations">
+            {analysis.regions.slice(0, 12).map((region, idx) => (
+              <div key={`${region.kind}-${idx}`} className="region-explanation">
+                <strong>{region.label}</strong>
+                <p>{region.explanation}</p>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      <button onClick={onAskGeminiAI} className="text-link">Re-create guide</button>
+    </section>
   );
 };

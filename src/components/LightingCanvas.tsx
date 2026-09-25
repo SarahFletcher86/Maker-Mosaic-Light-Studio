@@ -1,7 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { LightSource, ShadingSettings, ActiveTool } from '../types';
-import { processLineArtSurface, renderLightingOverlay, floodFill, CanvasShadingContext } from '../utils/normalMap';
-import { Sun, Moon, Sliders, Move, Download, RefreshCw, ZoomIn, ZoomOut, Eye } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Download, Eye, Sun } from 'lucide-react';
+import { LightSource, LightingGuideRegion, ShadingSettings } from '../types';
 
 interface LightingCanvasProps {
   svgString?: string;
@@ -9,9 +8,37 @@ interface LightingCanvasProps {
   light: LightSource;
   setLight: React.Dispatch<React.SetStateAction<LightSource>>;
   settings: ShadingSettings;
-  activeTool: ActiveTool;
-  paintColor: string;
-  clearPaintTrigger: number;
+  setSettings: React.Dispatch<React.SetStateAction<ShadingSettings>>;
+  guideRegions: LightingGuideRegion[];
+  guideNeedsUpdate: boolean;
+}
+
+const CANVAS_SIZE = 600;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function smoothSvgPath(region: LightingGuideRegion) {
+  const points = region.points.map(point => ({
+    x: clamp(point.x, 0, 100),
+    y: clamp(point.y, 0, 100),
+  }));
+  if (points.length < 3) return '';
+
+  const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  });
+
+  const start = midpoint(points[points.length - 1], points[0]);
+  let path = `M ${start.x} ${start.y}`;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const mid = midpoint(point, next);
+    path += ` Q ${point.x} ${point.y} ${mid.x} ${mid.y}`;
+  });
+  return path + ' Z';
 }
 
 export const LightingCanvas: React.FC<LightingCanvasProps> = ({
@@ -20,363 +47,727 @@ export const LightingCanvas: React.FC<LightingCanvasProps> = ({
   light,
   setLight,
   settings,
-  activeTool,
-  paintColor,
-  clearPaintTrigger
+  setSettings,
+  guideRegions,
+  guideNeedsUpdate,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const lineCanvasRef = useRef<HTMLCanvasElement>(null);
-  const basePaintCanvasRef = useRef<HTMLCanvasElement>(null);
-  const shadingCanvasRef = useRef<HTMLCanvasElement>(null);
-
-  const [shadingCtx, setShadingCtx] = useState<CanvasShadingContext | null>(null);
+  const [guideReveal, setGuideReveal] = useState(0);
+  const [showLightPuck, setShowLightPuck] = useState(false);
   const [isDraggingLight, setIsDraggingLight] = useState(false);
-  const [isDraggingShadow, setIsDraggingShadow] = useState(false);
-  const [splitPosition, setSplitPosition] = useState<number>(100); // 100 = full shaded view, <100 = split comparison
-  const [showLightPuck, setShowLightPuck] = useState(true);
+  const [subjectMaskUrl, setSubjectMaskUrl] = useState<string | null>(null);
+  const [isBlankLineArt, setIsBlankLineArt] = useState(true);
 
-  const CANVAS_SIZE = 600;
+  const lightX = clamp(light.x, 6, 94);
+  const lightY = clamp(light.y, 6, 94);
 
-  // Derived Puck Positions (clamped safely inside canvas boundaries)
-  const lightX = Math.max(10, Math.min(90, light.x));
-  const lightY = Math.max(10, Math.min(90, light.y));
-  const shadowX = 100 - lightX;
-  const shadowY = 100 - lightY;
+  const previewSurfaces = {
+    white: { label: 'White', color: '#FFFFFF' },
+    'warm-paper': { label: 'Warm paper', color: '#EFE3D2' },
+    'cool-grey': { label: 'Cool grey', color: '#DCE4E8' },
+    dark: { label: 'Dark', color: '#4D535C' },
+  } as const;
 
-  // Initialize Line Art Canvas
-  const loadLineArt = useCallback(() => {
-    const lineCanvas = lineCanvasRef.current;
-    const baseCanvas = basePaintCanvasRef.current;
-    if (!lineCanvas || !baseCanvas) return;
+  const currentSurface = previewSurfaces[settings.previewSurface];
 
-    const lineCtx = lineCanvas.getContext('2d', { willReadFrequently: true });
-    const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
-    if (!lineCtx || !baseCtx) return;
+  const analyzeArtworkSurface = useCallback((ctx: CanvasRenderingContext2D) => {
+    const image = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    const pixels = image.data;
+    const total = CANVAS_SIZE * CANVAS_SIZE;
+    const barrier = new Uint8Array(total);
 
-    lineCtx.fillStyle = '#FFFFFF';
-    lineCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    let chromaticPixels = 0;
+    let visiblePixels = 0;
 
-    baseCtx.fillStyle = '#FFFFFF';
-    baseCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    for (let i = 0; i < total; i++) {
+      const p = i * 4;
+      const r = pixels[p];
+      const g = pixels[p + 1];
+      const b = pixels[p + 2];
+      const a = pixels[p + 3];
+      if (a < 20) continue;
 
-    if (customImageDataUrl) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const scale = Math.min(CANVAS_SIZE / img.width, CANVAS_SIZE / img.height);
-        const w = img.width * scale;
-        const h = img.height * scale;
-        const x = (CANVAS_SIZE - w) / 2;
-        const y = (CANVAS_SIZE - h) / 2;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-        lineCtx.drawImage(img, x, y, w, h);
-        const processed = processLineArtSurface(lineCtx, CANVAS_SIZE, CANVAS_SIZE, settings.lineThreshold, settings.invertLines);
-        setShadingCtx(processed);
-      };
-      img.src = customImageDataUrl;
-    } else if (svgString) {
-      const img = new Image();
-      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
+      visiblePixels++;
+      if (max - min > 34 && max < 248) chromaticPixels++;
 
-      img.onload = () => {
-        lineCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
-        URL.revokeObjectURL(url);
-        const processed = processLineArtSurface(lineCtx, CANVAS_SIZE, CANVAS_SIZE, settings.lineThreshold, settings.invertLines);
-        setShadingCtx(processed);
-      };
-      img.src = url;
+      // Treat dark ink as a wall. One-pixel dilation below closes small anti-aliased gaps.
+      if (luminance < 112) barrier[i] = 1;
     }
-  }, [customImageDataUrl, svgString, settings.lineThreshold, settings.invertLines]);
 
-  useEffect(() => {
-    loadLineArt();
-  }, [loadLineArt]);
-
-  // Clear paint base canvas when clear trigger updates
-  useEffect(() => {
-    const baseCanvas = basePaintCanvasRef.current;
-    if (!baseCanvas) return;
-    const baseCtx = baseCanvas.getContext('2d');
-    if (!baseCtx) return;
-    baseCtx.fillStyle = '#FFFFFF';
-    baseCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-
-    if (shadingCtx && shadingCanvasRef.current) {
-      const shadingCtx2D = shadingCanvasRef.current.getContext('2d');
-      if (shadingCtx2D) {
-        renderLightingOverlay(shadingCtx2D, shadingCtx, light, settings, baseCanvas);
-      }
-    }
-  }, [clearPaintTrigger]);
-
-  // Re-render lighting overlay whenever light or shader settings change
-  useEffect(() => {
-    if (!shadingCtx || !shadingCanvasRef.current) return;
-    const shadingCtx2D = shadingCanvasRef.current.getContext('2d');
-    if (!shadingCtx2D) return;
-
-    renderLightingOverlay(
-      shadingCtx2D,
-      shadingCtx,
-      light,
-      settings,
-      basePaintCanvasRef.current || undefined
-    );
-  }, [shadingCtx, light, settings]);
-
-  // Direct Container Click or Bucket Fill
-  const handleContainerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-
-    if (activeTool === 'light-drag') {
-      setLight(prev => ({ ...prev, x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(95, y)) }));
-    } else if (activeTool === 'bucket-fill' && shadingCtx) {
-      const baseCanvas = basePaintCanvasRef.current;
-      if (!baseCanvas) return;
-      const baseCtx = baseCanvas.getContext('2d');
-      if (!baseCtx) return;
-
-      const px = Math.floor((x / 100) * CANVAS_SIZE);
-      const py = Math.floor((y / 100) * CANVAS_SIZE);
-
-      floodFill(
-        baseCtx,
-        px,
-        py,
-        paintColor,
-        shadingCtx.lineMaskData,
-        CANVAS_SIZE,
-        CANVAS_SIZE
-      );
-
-      if (shadingCanvasRef.current) {
-        const shadingCtx2D = shadingCanvasRef.current.getContext('2d');
-        if (shadingCtx2D) {
-          renderLightingOverlay(shadingCtx2D, shadingCtx, light, settings, baseCanvas);
+    const dilated = barrier.slice();
+    for (let y = 1; y < CANVAS_SIZE - 1; y++) {
+      for (let x = 1; x < CANVAS_SIZE - 1; x++) {
+        const i = y * CANVAS_SIZE + x;
+        if (!barrier[i]) continue;
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            dilated[(y + oy) * CANVAS_SIZE + (x + ox)] = 1;
+          }
         }
       }
     }
+
+    // Flood the open paper from the page edges. Anything non-ink that the flood
+    // cannot reach is an enclosed colouring surface.
+    const background = new Uint8Array(total);
+    const queue = new Int32Array(total);
+    let head = 0;
+    let tail = 0;
+
+    const enqueue = (index: number) => {
+      if (index < 0 || index >= total || dilated[index] || background[index]) return;
+      background[index] = 1;
+      queue[tail++] = index;
+    };
+
+    for (let x = 0; x < CANVAS_SIZE; x++) {
+      enqueue(x);
+      enqueue((CANVAS_SIZE - 1) * CANVAS_SIZE + x);
+    }
+    for (let y = 0; y < CANVAS_SIZE; y++) {
+      enqueue(y * CANVAS_SIZE);
+      enqueue(y * CANVAS_SIZE + CANVAS_SIZE - 1);
+    }
+
+    while (head < tail) {
+      const index = queue[head++];
+      const x = index % CANVAS_SIZE;
+      const y = Math.floor(index / CANVAS_SIZE);
+      if (x > 0) enqueue(index - 1);
+      if (x < CANVAS_SIZE - 1) enqueue(index + 1);
+      if (y > 0) enqueue(index - CANVAS_SIZE);
+      if (y < CANVAS_SIZE - 1) enqueue(index + CANVAS_SIZE);
+    }
+
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = CANVAS_SIZE;
+    maskCanvas.height = CANVAS_SIZE;
+    const maskCtx = maskCanvas.getContext('2d');
+    if (!maskCtx) {
+      setSubjectMaskUrl(null);
+      return;
+    }
+
+    const mask = maskCtx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
+    let enclosedPixels = 0;
+
+    for (let i = 0; i < total; i++) {
+      const p = i * 4;
+      const insideSurface = !dilated[i] && !background[i];
+      const value = insideSurface ? 255 : 0;
+      if (insideSurface) enclosedPixels++;
+      mask.data[p] = value;
+      mask.data[p + 1] = value;
+      mask.data[p + 2] = value;
+      mask.data[p + 3] = 255;
+    }
+
+    maskCtx.putImageData(mask, 0, 0);
+
+    // If the drawing is too open to form meaningful enclosed regions, don't
+    // force a bad mask; the semantic guide can still render normally.
+    const enclosedRatio = enclosedPixels / total;
+    setSubjectMaskUrl(enclosedRatio > 0.025 ? maskCanvas.toDataURL('image/png') : null);
+
+    const chromaticRatio = chromaticPixels / Math.max(1, visiblePixels);
+    const blankLineArt = chromaticRatio < 0.015;
+    setIsBlankLineArt(blankLineArt);
+
+    // For blank colouring pages only, make near-white paper transparent in the
+    // display canvas so an optional preview surface can show through. The export
+    // still gets a white paper background.
+    if (blankLineArt) {
+      for (let i = 0; i < total; i++) {
+        const p = i * 4;
+        const r = image.data[p];
+        const g = image.data[p + 1];
+        const b = image.data[p + 2];
+        if (r > 243 && g > 243 && b > 243) {
+          image.data[p + 3] = 0;
+        }
+      }
+      ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+      ctx.putImageData(image, 0, 0);
+    }
+  }, []);
+
+  const loadArtwork = useCallback(() => {
+    const canvas = lineCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+    if (customImageDataUrl) {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(CANVAS_SIZE / img.width, CANVAS_SIZE / img.height);
+        const width = img.width * scale;
+        const height = img.height * scale;
+        const x = (CANVAS_SIZE - width) / 2;
+        const y = (CANVAS_SIZE - height) / 2;
+        ctx.drawImage(img, x, y, width, height);
+        analyzeArtworkSurface(ctx);
+      };
+      img.src = customImageDataUrl;
+      return;
+    }
+
+    if (svgString) {
+      const img = new Image();
+      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        analyzeArtworkSurface(ctx);
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    }
+  }, [customImageDataUrl, svgString, analyzeArtworkSurface]);
+
+  useEffect(() => {
+    loadArtwork();
+  }, [loadArtwork]);
+
+  useEffect(() => {
+    setGuideReveal(guideRegions.length > 0 ? 100 : 0);
+  }, [guideRegions]);
+
+  const resolved = useMemo(() => {
+    const shadow =
+      settings.shadowPalette === 'same-color' ? '#5B554F' :
+      settings.shadowPalette === 'warm-gray' ? '#81746E' :
+      settings.shadowPalette === 'cool-gray' ? '#667085' :
+      settings.shadowPalette === 'purple' ? '#65507D' :
+      settings.shadowPalette === 'blue' ? '#456589' :
+      settings.shadowPalette === 'black' ? '#25242A' :
+      settings.shadowColor;
+
+    const highlight =
+      settings.highlightPalette === 'paper-white' ? '#FFFDF8' :
+      settings.highlightPalette === 'warm' ? '#FFE2A8' :
+      settings.highlightPalette === 'cool' ? '#DDF2FF' :
+      settings.highlightPalette === 'same-color' ? '#FFFFFF' :
+      settings.highlightColor;
+
+    return { shadow, highlight };
+  }, [
+    settings.shadowPalette,
+    settings.highlightPalette,
+    settings.shadowColor,
+    settings.highlightColor,
+  ]);
+
+  const mediumConfig = useMemo(() => {
+    switch (settings.coloringMedium) {
+      case 'markers':
+        return { label: 'Marker', shadowBase: 0.28, highlightBase: 0.27, filter: undefined, hatch: false };
+      case 'watercolors':
+        return { label: 'Watercolour', shadowBase: 0.20, highlightBase: 0.21, filter: 'url(#watercolor)', hatch: false };
+      case 'digital':
+        return { label: 'Digital', shadowBase: 0.25, highlightBase: 0.26, filter: 'url(#digitalSoft)', hatch: false };
+      default:
+        return { label: 'Pencil', shadowBase: 0.17, highlightBase: 0.20, filter: 'url(#pencilGrain)', hatch: false };
+    }
+  }, [settings.coloringMedium]);
+
+  const drawRegionPath = (
+    ctx: CanvasRenderingContext2D,
+    region: LightingGuideRegion,
+  ) => {
+    if (!region.points.length) return false;
+    const points = region.points.map(point => ({
+      x: (clamp(point.x, 0, 100) / 100) * CANVAS_SIZE,
+      y: (clamp(point.y, 0, 100) / 100) * CANVAS_SIZE,
+    }));
+    if (points.length < 3) return false;
+
+    const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+    });
+
+    const start = midpoint(points[points.length - 1], points[0]);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    points.forEach((point, index) => {
+      const next = points[(index + 1) % points.length];
+      const mid = midpoint(point, next);
+      ctx.quadraticCurveTo(point.x, point.y, mid.x, mid.y);
+    });
+    ctx.closePath();
+    return true;
   };
 
-  // Download Image Result
   const handleDownload = () => {
-    const shadingCanvas = shadingCanvasRef.current;
-    if (!shadingCanvas) return;
+    const source = lineCanvasRef.current;
+    if (!source) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = CANVAS_SIZE;
+    canvas.height = CANVAS_SIZE;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.drawImage(source, 0, 0);
+
+    guideRegions.forEach((region) => {
+      if (!drawRegionPath(ctx, region)) return;
+      const isHighlight = region.kind === 'highlight';
+      const isDeep = region.kind === 'deep-shadow';
+      const isCast = region.kind === 'cast-shadow';
+      const strength = clamp(region.strength || .5, .15, 1);
+      const base = isHighlight ? mediumConfig.highlightBase : mediumConfig.shadowBase;
+      const alpha = clamp(base * (0.65 + strength * .65) * (isDeep ? 1.25 : isCast ? 1.1 : 1), .08, .55);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation =
+        isHighlight && settings.highlightPalette === 'same-color' ? 'screen' :
+        !isHighlight && settings.shadowPalette === 'same-color' ? 'multiply' :
+        'source-over';
+
+      ctx.fillStyle = isHighlight ? resolved.highlight : resolved.shadow;
+
+      if (settings.coloringMedium === 'watercolors') {
+        ctx.filter = 'blur(1.4px)';
+      } else if (settings.coloringMedium === 'digital') {
+        ctx.filter = 'blur(.7px)';
+      }
+
+      ctx.fill();
+      ctx.restore();
+
+      if (settings.coloringMedium === 'colored-pencils') {
+        ctx.save();
+        drawRegionPath(ctx, region);
+        ctx.clip();
+        ctx.globalAlpha = alpha * .55;
+        ctx.strokeStyle = isHighlight ? resolved.highlight : resolved.shadow;
+        ctx.lineWidth = 1.15;
+        for (let offset = -CANVAS_SIZE; offset < CANVAS_SIZE * 2; offset += 9) {
+          ctx.beginPath();
+          ctx.moveTo(offset, 0);
+          ctx.lineTo(offset + CANVAS_SIZE, CANVAS_SIZE);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    });
+
     const link = document.createElement('a');
-    link.download = `ChromaLight-Shaded-Artwork-${Date.now()}.png`;
-    link.href = shadingCanvas.toDataURL('image/png');
+    link.download = `Maker-Mosaic-Light-Guide-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
     link.click();
   };
 
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!showLightPuck || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    setLight(prev => ({ ...prev, x: clamp(x, 5, 95), y: clamp(y, 5, 95) }));
+  };
+
+  const learningColors = {
+    highlight: { fill: '#F7C95B', stroke: '#B67A2E' },
+    'form-shadow': { fill: '#A889B0', stroke: '#6B566C' },
+    'cast-shadow': { fill: '#7BA6BD', stroke: '#5B7890' },
+    'deep-shadow': { fill: '#59617F', stroke: '#3F4665' },
+  } as const;
+
+  const darkPreviewSurface = settings.previewSurface === 'dark';
+  const outlineColors = darkPreviewSurface
+    ? {
+        highlight: '#FFE8A3',
+        'form-shadow': '#D8CADC',
+        'cast-shadow': '#C7DCE6',
+        'deep-shadow': '#D9DCE7',
+      }
+    : {
+        highlight: '#A46A26',
+        'form-shadow': '#766679',
+        'cast-shadow': '#617987',
+        'deep-shadow': '#5C6172',
+      };
+
+  const polygonAppearance = (region: LightingGuideRegion) => {
+    if (settings.showLearningMap) {
+      const map = learningColors[region.kind];
+      return {
+        fill: map.fill,
+        stroke: map.stroke,
+        opacity: clamp(.23 + region.strength * .18, .25, .48),
+        filter: undefined,
+        blendMode: 'normal' as const,
+        strokeWidth: .35,
+        strokeDasharray: undefined as string | undefined,
+        strokeOpacity: .95,
+      };
+    }
+
+    const isHighlight = region.kind === 'highlight';
+    const isDeep = region.kind === 'deep-shadow';
+    const isCast = region.kind === 'cast-shadow';
+    const baseOpacity = isHighlight ? mediumConfig.highlightBase : mediumConfig.shadowBase;
+    const highlightBoost =
+      isHighlight && settings.boostHighlightVisibility
+        ? (isBlankLineArt ? 1.55 : 1.25)
+        : 1;
+
+    const subtleOutline =
+      settings.showGuideOutlines &&
+      (
+        isHighlight ||
+        (region.kind === 'form-shadow' && settings.coloringMedium === 'colored-pencils')
+      );
+
+    const boostedMinimum =
+      settings.boostHighlightVisibility && isBlankLineArt
+        ? (isHighlight ? .18 : .14)
+        : .08;
+
+    return {
+      fill: isHighlight ? resolved.highlight : resolved.shadow,
+      stroke: subtleOutline ? outlineColors[region.kind] : 'none',
+      opacity: clamp(
+        baseOpacity *
+          (.65 + region.strength * .65) *
+          (isDeep ? 1.25 : isCast ? 1.1 : 1) *
+          highlightBoost,
+        boostedMinimum,
+        .62,
+      ),
+      filter: mediumConfig.filter,
+      blendMode:
+        isHighlight && settings.highlightPalette === 'same-color' ? 'screen' as const :
+        !isHighlight && settings.shadowPalette === 'same-color' ? 'multiply' as const :
+        settings.coloringMedium === 'markers' ? 'multiply' as const :
+        'normal' as const,
+      strokeWidth: subtleOutline ? .18 : 0,
+      strokeDasharray: undefined as string | undefined,
+      strokeOpacity: subtleOutline ? .52 : 0,
+    };
+  };
+
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col items-center justify-between space-y-4">
-      {/* Canvas Header Toolbar */}
-      <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800 text-xs">
-        <div className="flex items-center space-x-2">
-          <span className="font-bold text-white flex items-center space-x-1.5">
-            <Sun className="w-4 h-4 text-amber-400" />
-            <span>Interactive Lighting Stage</span>
-          </span>
-          <span className="bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-mono">
-            {activeTool === 'light-drag' ? 'Drag Light (☀️) or Shadow (🌙) Puck' : 'Click region to Bucket Fill'}
-          </span>
+    <section className="studio-card canvas-card">
+      <div className="canvas-toolbar">
+        <div className="canvas-title">
+          <Sun size={16} color="var(--brass)" />
+          <span>Your artwork</span>
         </div>
-
-        <div className="flex items-center space-x-2">
-          {/* Toggle Puck Visibility */}
+        <div className="canvas-actions">
           <button
-            onClick={() => setShowLightPuck(prev => !prev)}
-            className={`px-2.5 py-1 rounded-lg font-semibold transition-all border ${
-              showLightPuck
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
-            }`}
-            title="Toggle Light & Shadow Pucks"
+            className="subtle-button"
+            type="button"
+            onClick={() => setShowLightPuck(value => !value)}
           >
-            <Eye className="w-3.5 h-3.5 inline mr-1" />
-            <span>Pucks</span>
+            <Eye size={14} />
+            {showLightPuck ? 'Done' : 'Custom light'}
           </button>
-
-          {/* Download */}
           <button
+            className="download-button"
+            type="button"
             onClick={handleDownload}
-            className="flex items-center space-x-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1 rounded-lg transition-all shadow-sm shadow-amber-500/20"
+            disabled={!guideRegions.length}
+            style={{ opacity: guideRegions.length ? 1 : .45 }}
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export</span>
+            <Download size={14} />
+            Download guide
           </button>
         </div>
       </div>
 
-      {/* Main Interactive Canvas Container */}
       <div
         ref={containerRef}
-        onPointerDown={handleContainerPointerDown}
-        className="relative w-full aspect-square max-w-[550px] bg-white rounded-xl shadow-2xl overflow-hidden border-2 border-slate-700 cursor-crosshair touch-none select-none"
+        className="art-stage"
+        onPointerDown={handlePointerDown}
+        style={{
+          cursor: showLightPuck ? 'crosshair' : 'default',
+          background: currentSurface.color,
+        }}
       >
-        {/* Layer 1: Line Art Original Canvas */}
         <canvas
           ref={lineCanvasRef}
           width={CANVAS_SIZE}
           height={CANVAS_SIZE}
-          className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
         />
 
-        {/* Layer 2: Base Color Paint Canvas */}
-        <canvas
-          ref={basePaintCanvasRef}
-          width={CANVAS_SIZE}
-          height={CANVAS_SIZE}
-          className="absolute inset-0 w-full h-full object-contain pointer-events-none mix-blend-multiply"
-        />
+        {guideRegions.length > 0 && (
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+              clipPath: `inset(0 ${100 - guideReveal}% 0 0)`,
+            }}
+          >
+            <defs>
+              {subjectMaskUrl && (
+                <mask
+                  id="subjectSurfaceMask"
+                  maskUnits="userSpaceOnUse"
+                  x="0"
+                  y="0"
+                  width="100"
+                  height="100"
+                >
+                  <image
+                    href={subjectMaskUrl}
+                    x="0"
+                    y="0"
+                    width="100"
+                    height="100"
+                    preserveAspectRatio="none"
+                  />
+                </mask>
+              )}
+              <filter id="pencilGrain" x="-8%" y="-8%" width="116%" height="116%">
+                <feTurbulence type="fractalNoise" baseFrequency=".55" numOctaves="3" seed="9" result="noise" />
+                <feColorMatrix
+                  in="noise"
+                  type="matrix"
+                  values="
+                    0.35 0 0 0 0.34
+                    0 0.35 0 0 0.34
+                    0 0 0.35 0 0.34
+                    0 0 0 .22 0"
+                  result="grain"
+                />
+                <feComposite in="grain" in2="SourceGraphic" operator="in" result="texturedGrain" />
+                <feBlend in="SourceGraphic" in2="texturedGrain" mode="multiply" />
+              </filter>
+              <filter id="watercolor" x="-6%" y="-6%" width="112%" height="112%">
+                <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="4" result="noise" />
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale=".55" result="rough" />
+                <feGaussianBlur in="rough" stdDeviation=".10" />
+              </filter>
+              <filter id="digitalSoft" x="-4%" y="-4%" width="108%" height="108%">
+                <feGaussianBlur stdDeviation=".16" />
+              </filter>
+              <filter id="highlightBloom" x="-15%" y="-15%" width="130%" height="130%">
+                <feGaussianBlur stdDeviation=".55" />
+              </filter>
+            </defs>
 
-        {/* Layer 3: Shading Overlay Canvas (Clipped by split view slider) */}
-        <div
-          className="absolute inset-0 overflow-hidden pointer-events-none"
-          style={{ width: `${splitPosition}%` }}
-        >
-          <canvas
-            ref={shadingCanvasRef}
-            width={CANVAS_SIZE}
-            height={CANVAS_SIZE}
-            className="absolute inset-0 w-full h-full object-contain"
-          />
-        </div>
+            {guideRegions.map((region, index) => {
+              const appearance = polygonAppearance(region);
+              const path = smoothSvgPath(region);
+              const isHighlight = region.kind === 'highlight';
 
-        {/* SVG Connecting Ray Line between Light Source & Shadow Side */}
-        {showLightPuck && (
-          <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
-            <line
-              x1={`${lightX}%`}
-              y1={`${lightY}%`}
-              x2={`${shadowX}%`}
-              y2={`${shadowY}%`}
-              stroke="rgba(245, 158, 11, 0.6)"
-              strokeWidth="2.5"
-              strokeDasharray="6 4"
-            />
+              return (
+                <g
+                  key={`${region.kind}-${index}`}
+                  mask={subjectMaskUrl && region.kind !== 'cast-shadow' ? 'url(#subjectSurfaceMask)' : undefined}
+                >
+                  {!settings.showLearningMap && isHighlight && (
+                    <path
+                      d={path}
+                      fill={resolved.highlight}
+                      fillOpacity={clamp(
+                        appearance.opacity * (settings.boostHighlightVisibility ? .9 : .55),
+                        .09,
+                        settings.boostHighlightVisibility ? .28 : .18
+                      )}
+                      filter="url(#highlightBloom)"
+                      style={{ mixBlendMode: 'normal' }}
+                    />
+                  )}
+                  <path
+                    d={path}
+                    fill={appearance.fill}
+                    fillOpacity={appearance.opacity}
+                    stroke={appearance.stroke}
+                    strokeWidth={appearance.strokeWidth}
+                    strokeDasharray={appearance.strokeDasharray}
+                    strokeOpacity={appearance.strokeOpacity}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    filter={appearance.filter}
+                    style={{ mixBlendMode: appearance.blendMode }}
+                  />
+                </g>
+              );
+            })}
           </svg>
         )}
 
-        {/* 1. Interactive LIGHT SOURCE PUCK (☀️) */}
         {showLightPuck && (
           <div
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              e.currentTarget.setPointerCapture(e.pointerId);
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              event.currentTarget.setPointerCapture(event.pointerId);
               setIsDraggingLight(true);
             }}
-            onPointerMove={(e) => {
+            onPointerMove={(event) => {
               if (!isDraggingLight || !containerRef.current) return;
               const rect = containerRef.current.getBoundingClientRect();
-              const x = Math.max(10, Math.min(90, ((e.clientX - rect.left) / rect.width) * 100));
-              const y = Math.max(10, Math.min(90, ((e.clientY - rect.top) / rect.height) * 100));
-              setLight(prev => ({ ...prev, x, y }));
+              const x = ((event.clientX - rect.left) / rect.width) * 100;
+              const y = ((event.clientY - rect.top) / rect.height) * 100;
+              setLight(prev => ({ ...prev, x: clamp(x, 5, 95), y: clamp(y, 5, 95) }));
             }}
-            onPointerUp={(e) => {
-              e.currentTarget.releasePointerCapture(e.pointerId);
+            onPointerUp={(event) => {
+              event.currentTarget.releasePointerCapture(event.pointerId);
               setIsDraggingLight(false);
             }}
             onPointerCancel={() => setIsDraggingLight(false)}
-            className="absolute z-30 transform -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing touch-none select-none group"
-            style={{ left: `${lightX}%`, top: `${lightY}%` }}
-            title="Drag Light Source Puck"
+            style={{
+              position: 'absolute',
+              left: `${lightX}%`,
+              top: `${lightY}%`,
+              transform: 'translate(-50%, -50%)',
+              width: 38,
+              height: 38,
+              borderRadius: '50%',
+              border: '2px solid var(--brass)',
+              background: light.color,
+              boxShadow: '0 6px 20px rgba(50,40,30,.18)',
+              display: 'grid',
+              placeItems: 'center',
+              zIndex: 20,
+              cursor: 'grab',
+            }}
+            title="Drag the light source"
           >
-            {/* Ambient Pulsing Glow */}
-            <div
-              className="absolute rounded-full pointer-events-none transform -translate-x-1/2 -translate-y-1/2 opacity-40 animate-pulse"
-              style={{
-                width: '70px',
-                height: '70px',
-                left: '50%',
-                top: '50%',
-                backgroundColor: light.color,
-                filter: 'blur(10px)',
-              }}
+            <Sun size={17} color="var(--ink)" />
+          </div>
+        )}
+
+        {guideRegions.length > 0 && guideReveal > 0 && guideReveal < 100 && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${guideReveal}%`,
+              top: 0,
+              bottom: 0,
+              width: 2,
+              background: 'var(--brass)',
+              boxShadow: '0 0 0 1px rgba(255,255,255,.35)',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+      </div>
+
+      {guideRegions.length > 0 && (
+        <>
+          <div className="guide-note">
+            {guideNeedsUpdate
+              ? 'You changed the light direction. Update the lighting guide to move the highlight and shadow areas.'
+              : settings.showLearningMap
+              ? 'Learning map: gold = highlight, plum = form shadow, blue = cast shadow, indigo = deepest shadow.'
+              : isBlankLineArt
+                ? `${mediumConfig.label} preview · pale highlight areas mean “keep this lighter” on white paper. Shadows show where to build depth.`
+                : `${mediumConfig.label} preview · change medium, light type, or colours and the preview updates instantly.`}
+          </div>
+
+          {settings.showLearningMap && (
+            <div className="guide-legend">
+              <span><i className="legend-dot" style={{ background: '#F7C95B' }} />Highlight</span>
+              <span><i className="legend-dot" style={{ background: '#A889B0' }} />Form shadow</span>
+              <span><i className="legend-dot" style={{ background: '#7BA6BD' }} />Cast shadow</span>
+              <span><i className="legend-dot" style={{ background: '#59617F' }} />Deep shadow</span>
+            </div>
+          )}
+
+          <div className="preview-surface-panel">
+            <div className="preview-surface-header">
+              <div>
+                <p className="preview-surface-title">Preview surface</p>
+                <p className="preview-surface-copy">
+                  For visibility only — does not change your artwork or download.
+                </p>
+              </div>
+            </div>
+
+            <div className="preview-surface-chips">
+              {Object.entries(previewSurfaces).map(([value, option]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`surface-chip ${settings.previewSurface === value ? 'selected' : ''}`}
+                  onClick={() =>
+                    setSettings(prev => ({
+                      ...prev,
+                      previewSurface: value as ShadingSettings['previewSurface'],
+                    }))
+                  }
+                >
+                  <span
+                    className="surface-swatch"
+                    style={{ background: option.color }}
+                    aria-hidden="true"
+                  />
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <label className="preview-toggle">
+              <input
+                type="checkbox"
+                checked={settings.boostHighlightVisibility}
+                onChange={(event) =>
+                  setSettings(prev => ({
+                    ...prev,
+                    boostHighlightVisibility: event.target.checked,
+                  }))
+                }
+              />
+              <span>
+                <strong>Boost highlight visibility</strong>
+                <small>Helpful when planning on an uncoloured page.</small>
+              </span>
+            </label>
+
+            <label className="preview-toggle guide-outline-toggle">
+              <input
+                type="checkbox"
+                checked={settings.showGuideOutlines}
+                onChange={(event) =>
+                  setSettings(prev => ({
+                    ...prev,
+                    showGuideOutlines: event.target.checked,
+                  }))
+                }
+              />
+              <span>
+                <strong>Show subtle guide edges</strong>
+                <small>Adds a faint edge only where subtle guide areas need extra definition.</small>
+              </span>
+            </label>
+          </div>
+
+          <div className="comparison-slider">
+            <span>Original</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={guideReveal}
+              onChange={(e) => setGuideReveal(Number(e.target.value))}
+              aria-label="Compare original artwork with lighting guide"
             />
-
-            <div className="relative w-9 h-9 rounded-full border-2 border-amber-400 bg-slate-900 shadow-2xl flex items-center justify-center transition-transform group-hover:scale-110">
-              <div
-                className="w-6 h-6 rounded-full border border-slate-950 flex items-center justify-center shadow-inner"
-                style={{ backgroundColor: light.color }}
-              >
-                <Sun className="w-3.5 h-3.5 text-slate-950 font-bold" />
-              </div>
-              <span className="absolute -bottom-6 whitespace-nowrap bg-amber-500 text-slate-950 font-extrabold text-[10px] px-2 py-0.5 rounded-full shadow-md tracking-tight">
-                ☀️ Light Source
-              </span>
-            </div>
+            <span>Guide</span>
           </div>
-        )}
-
-        {/* 2. Interactive SHADOW CAST PUCK (🌙) */}
-        {showLightPuck && (
-          <div
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              setIsDraggingShadow(true);
-            }}
-            onPointerMove={(e) => {
-              if (!isDraggingShadow || !containerRef.current) return;
-              const rect = containerRef.current.getBoundingClientRect();
-              const sx = Math.max(10, Math.min(90, ((e.clientX - rect.left) / rect.width) * 100));
-              const sy = Math.max(10, Math.min(90, ((e.clientY - rect.top) / rect.height) * 100));
-              setLight(prev => ({ ...prev, x: 100 - sx, y: 100 - sy }));
-            }}
-            onPointerUp={(e) => {
-              e.currentTarget.releasePointerCapture(e.pointerId);
-              setIsDraggingShadow(false);
-            }}
-            onPointerCancel={() => setIsDraggingShadow(false)}
-            className="absolute z-30 transform -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing touch-none select-none group"
-            style={{ left: `${shadowX}%`, top: `${shadowY}%` }}
-            title="Drag Shadow Cast Side Puck"
-          >
-            <div className="relative w-9 h-9 rounded-full border-2 border-indigo-400 bg-slate-950 shadow-2xl flex items-center justify-center transition-transform group-hover:scale-110">
-              <div
-                className="w-6 h-6 rounded-full border border-indigo-500/50 flex items-center justify-center shadow-inner"
-                style={{ backgroundColor: settings.shadowColor }}
-              >
-                <Moon className="w-3.5 h-3.5 text-indigo-200" />
-              </div>
-              <span className="absolute -bottom-6 whitespace-nowrap bg-indigo-600 text-white font-extrabold text-[10px] px-2 py-0.5 rounded-full shadow-md tracking-tight">
-                🌙 Shadow Side
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Comparison Split Line & Handle */}
-        {splitPosition < 100 && (
-          <div
-            className="absolute top-0 bottom-0 z-10 w-0.5 bg-amber-400 shadow-md pointer-events-none"
-            style={{ left: `${splitPosition}%` }}
-          >
-            <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center shadow-lg">
-              ↔
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Canvas Footer Controls (Split View Slider) */}
-      <div className="w-full flex items-center space-x-3 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-xs">
-        <span className="text-slate-400 font-medium whitespace-nowrap">Original</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={splitPosition}
-          onChange={(e) => setSplitPosition(Number(e.target.value))}
-          className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-        />
-        <span className="text-amber-400 font-bold whitespace-nowrap">Shaded ({splitPosition}%)</span>
-      </div>
-    </div>
+        </>
+      )}
+    </section>
   );
 };
